@@ -115,7 +115,7 @@ class ScenarioManager(object):
 
         self._agent.setup_sensors(self.ego_vehicles[0], self._debug_mode)
 
-    def run_scenario(self, save_sensors=False):
+    def run_scenario(self, save_sensors=None):
         """
         Trigger the start of the scenario and wait for it to finish/fail
         """

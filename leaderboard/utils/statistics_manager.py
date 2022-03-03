@@ -207,7 +207,6 @@ class StatisticsManager(object):
 
     def compute_global_statistics(self, total_routes):
         global_record = RouteRecord()
-        global_record.scores['success_rate'] = 0
         global_record.route_id = -1
         global_record.index = -1
         global_record.status = 'Completed'
@@ -218,7 +217,6 @@ class StatisticsManager(object):
                 global_record.scores['score_route'] += route_record.scores['score_route']
                 global_record.scores['score_penalty'] += route_record.scores['score_penalty']
                 global_record.scores['score_composed'] += route_record.scores['score_composed']
-                global_record.scores['success_rate'] += int(route_record.scores['score_route']==100.0)
 
                 for key in global_record.infractions.keys():
                     route_length_kms = max(route_record.scores['score_route'] / 100 * route_record.meta['route_length'] / 1000.0, 0.001)
@@ -277,8 +275,7 @@ class StatisticsManager(object):
 
         stats_dict = route_record.__dict__
         data['_checkpoint']['global_record'] = stats_dict
-        data['values'] = ['{:.3f}'.format(stats_dict['scores']['success_rate']),
-                          '{:.3f}'.format(stats_dict['scores']['score_composed']),
+        data['values'] = ['{:.3f}'.format(stats_dict['scores']['score_composed']),
                           '{:.3f}'.format(stats_dict['scores']['score_route']),
                           '{:.3f}'.format(stats_dict['scores']['score_penalty']),
                           # infractions
@@ -293,8 +290,7 @@ class StatisticsManager(object):
                           '{:.3f}'.format(stats_dict['infractions']['vehicle_blocked'])
                           ]
 
-        data['labels'] = ['Success rate',
-                          'Avg. driving score',
+        data['labels'] = ['Avg. driving score',
                           'Avg. route completion',
                           'Avg. infraction penalty',
                           'Collisions with pedestrians',

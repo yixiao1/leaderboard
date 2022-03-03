@@ -205,23 +205,18 @@ class LeaderboardEvaluator(object):
         # sync state
         CarlaDataProvider.get_world().tick()
 
-    def _load_and_wait_for_world(self, args, config):
+    def _load_and_wait_for_world(self, args, town, ego_vehicles=None):
         """
         Load a new CARLA world and provide data to CarlaDataProvider
         """
 
-        town = config.town
         self.world = self.client.load_world(town)
-        self.world.set_weather(config.weather)
         settings = self.world.get_settings()
         settings.fixed_delta_seconds = 1.0 / self.frame_rate
         settings.synchronous_mode = True
         self.world.apply_settings(settings)
 
         self.world.reset_all_traffic_lights()
-        if 'background_activity' in list(config.scenarios.keys()):
-            if 'cross_factor' in list(config.scenarios['background_activity'].keys()):
-                self.world.set_pedestrians_cross_factor(config.scenarios['background_activity']['cross_factor'])
 
         CarlaDataProvider.set_client(self.client)
         CarlaDataProvider.set_world(self.world)
@@ -329,13 +324,13 @@ class LeaderboardEvaluator(object):
 
             self._register_statistics(config, args.checkpoint, entry_status, crash_message)
             self._cleanup()
-            sys.exit(-1)
+            return
 
         print("\033[1m> Loading the world\033[0m")
 
         # Load the world and the scenario
         try:
-            self._load_and_wait_for_world(args, config)
+            self._load_and_wait_for_world(args, config.town, config.ego_vehicles)
             self.agent_instance.set_world(self.world)
             self._prepare_ego_vehicles(config.ego_vehicles, False)
             scenario = RouteScenario(world=self.world, config=config, debug_mode=args.debug)
@@ -508,7 +503,7 @@ def main():
 
     f = open(arguments.agent_config, 'r')
     _json = json.loads(f.read())
-    arguments.checkpoint = '/'.join([arguments.checkpoint, arguments.scenarios.split('/')[-1].split('.')[-2], '_'.join([arguments.agent_config.split('/')[-3], arguments.agent_config.split('/')[-2], str(_json['checkpoint']),arguments.fps+'FPS.json'])])
+    arguments.checkpoint = '/'.join([arguments.checkpoint, arguments.scenarios.split('/')[-1].split('.')[-2], '_'.join([arguments.agent_config.split('/')[-3], arguments.agent_config.split('/')[-2]]), '_'.join([str(_json['checkpoint']), arguments.fps+'FPS.json'])])
 
     statistics_manager = StatisticsManager()
 

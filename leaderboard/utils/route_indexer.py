@@ -21,8 +21,7 @@ class RouteIndexer():
         self._index = 0
 
         # retrieve routes
-        env_dict, package_name = RouteParser.parse_annotations_file(self._scenarios_file)
-        route_configurations = RouteParser.parse_scenarios_routes_file(self._routes_file, env_dict, package_name)
+        route_configurations = RouteParser.parse_routes_file(self._routes_file, self._scenarios_file, False)
 
         self.n_routes = len(route_configurations)
         self.total = self.n_routes*self._repetitions
