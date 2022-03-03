@@ -11,18 +11,18 @@ from leaderboard.utils.checkpoint_tools import fetch_dict, create_default_json_m
 
 
 class RouteIndexer():
-    def __init__(self, routes_file, scenarios_file, repetitions, route_id):
+    def __init__(self, routes_file, scenarios_file, repetitions):
         self._routes_file = routes_file
         self._scenarios_file = scenarios_file
         self._repetitions = repetitions
-        self._route_id = route_id
         self._configs_dict = OrderedDict()
         self._configs_list = []
         self.routes_length = []
         self._index = 0
 
         # retrieve routes
-        route_configurations = RouteParser.parse_routes_file(self._routes_file, self._scenarios_file, self._route_id)
+        env_dict, package_name = RouteParser.parse_annotations_file(self._scenarios_file)
+        route_configurations = RouteParser.parse_scenarios_routes_file(self._routes_file, env_dict, package_name)
 
         self.n_routes = len(route_configurations)
         self.total = self.n_routes*self._repetitions

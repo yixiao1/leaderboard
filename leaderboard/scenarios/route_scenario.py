@@ -184,19 +184,10 @@ class RouteScenario(BasicScenario):
         """
         self.config = config
         self.route = None
-        self.sampled_scenarios_definitions = None
-        self.background_amount = 0
-
+        self.scenarios_definitions = None
         self._update_route(world, config, debug_mode>0)
-
-        ego_vehicle = self._update_ego_vehicle()
-
-        self.list_scenarios = self._build_scenario_instances(world,
-                                                             ego_vehicle,
-                                                             self.sampled_scenarios_definitions,
-                                                             scenarios_per_tick=10,
-                                                             timeout=self.timeout,
-                                                             debug_mode=debug_mode>1)
+        ego_vehicle = self._update_ego_vehicle(config)
+        self.list_scenarios = []
 
         super(RouteScenario, self).__init__(name=config.name,
                                             ego_vehicles=[ego_vehicle],
@@ -216,21 +207,17 @@ class RouteScenario(BasicScenario):
         """
 
         # Transform the scenario file into a dictionary
-        world_annotations = RouteParser.parse_annotations_file(config.scenario_file)
+        #world_annotations = RouteParser.parse_annotations_file(config.scenario_file)
 
         # prepare route's trajectory (interpolate and add the GPS route)
         gps_route, route = interpolate_trajectory(world, config.trajectory)
 
-        potential_scenarios_definitions, _ = RouteParser.scan_route_for_scenarios(
-            config.town, route, world_annotations)
+        #self.scenarios_definitions = RouteParser.setup_scenarios_for_route(config.town, route, config.scenarios)
 
         self.route = route
         CarlaDataProvider.set_ego_vehicle_route(convert_transform_to_location(self.route))
 
         config.agent.set_global_plan(gps_route, self.route)
-
-        # Sample the scenarios to be used for this route instance.
-        self.sampled_scenarios_definitions = self._scenario_sampling(potential_scenarios_definitions)
 
         # Timeout of scenario in seconds
         self.timeout = self._estimate_route_timeout()
@@ -239,7 +226,7 @@ class RouteScenario(BasicScenario):
         if debug_mode:
             self._draw_waypoints(world, self.route, vertical_shift=1.0, persistency=50000.0)
 
-    def _update_ego_vehicle(self):
+    def _update_ego_vehicle(self, config):
         """
         Set/Update the start position of the ego_vehicle
         """
@@ -247,7 +234,7 @@ class RouteScenario(BasicScenario):
         elevate_transform = self.route[0][0]
         elevate_transform.location.z += 0.5
 
-        ego_vehicle = CarlaDataProvider.request_new_actor('vehicle.lincoln.mkz_2017',
+        ego_vehicle = CarlaDataProvider.request_new_actor(config.ego_model,
                                                           elevate_transform,
                                                           rolename='hero')
 
@@ -389,7 +376,7 @@ class RouteScenario(BasicScenario):
             scenario_configuration.other_actors = list_of_actor_conf_instances
             scenario_configuration.trigger_points = [egoactor_trigger_position]
             scenario_configuration.subtype = definition['scenario_type']
-            scenario_configuration.ego_vehicles = [ActorConfigurationData('vehicle.lincoln.mkz_2017',
+            scenario_configuration.ego_vehicles = [ActorConfigurationData('vehicle.lincoln.mkz2017',
                                                                           ego_vehicle.get_transform(),
                                                                           'hero')]
             route_var_name = "ScenarioRouteNumber{}".format(scenario_number)
@@ -447,33 +434,22 @@ class RouteScenario(BasicScenario):
         Set other_actors to the superset of all scenario actors
         """
         # Create the background activity of the route
-        town_amount = {
-            'Town01': 120,
-            'Town02': 100,
-            'Town03': 120,
-            'Town04': 200,
-            'Town05': 120,
-            'Town06': 150,
-            'Town07': 110,
-            'Town08': 180,
-            'Town09': 300,
-            'Town10': 120,
-        }
 
-        self.background_amount = town_amount.get(config.town, 0)
+        if 'background_activity' in list(config.scenarios.keys()):
+            for actors_name in ['vehicle.*', 'walker.*']:
+                if actors_name in list(config.scenarios['background_activity'].keys()):
+                    new_actors = CarlaDataProvider.request_new_batch_actors(actors_name,
+                                                                            config.scenarios['background_activity'][actors_name],
+                                                                            carla.Transform(),
+                                                                            autopilot=True,
+                                                                            random_location=True,
+                                                                            rolename='background')
 
-        new_actors = CarlaDataProvider.request_new_batch_actors('vehicle.*',
-                                                                self.background_amount,
-                                                                carla.Transform(),
-                                                                autopilot=True,
-                                                                random_location=True,
-                                                                rolename='background')
+                    if new_actors is None:
+                        raise Exception("Error: Unable to add the background activity, all spawn points were occupied")
 
-        if new_actors is None:
-            raise Exception("Error: Unable to add the background activity, all spawn points were occupied")
-
-        for _actor in new_actors:
-            self.other_actors.append(_actor)
+                    for _actor in new_actors:
+                        self.other_actors.append(_actor)
 
         # Add all the actors of the specific scenarios to self.other_actors
         for scenario in self.list_scenarios:
@@ -481,48 +457,15 @@ class RouteScenario(BasicScenario):
 
     def _create_behavior(self):
         """
-        Basic behavior do nothing, i.e. Idle
-        """
-        scenario_trigger_distance = 1.5  # Max trigger distance between route and scenario
+                Basic behavior do nothing, i.e. Idle
+                """
 
-        behavior = py_trees.composites.Parallel(policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE)
+        # Build behavior tree
+        sequence = py_trees.composites.Sequence("RouteScenario")
+        idle_behavior = Idle()
+        sequence.add_child(idle_behavior)
 
-        subbehavior = py_trees.composites.Parallel(name="Behavior",
-                                                   policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL)
-
-        scenario_behaviors = []
-        blackboard_list = []
-
-        for i, scenario in enumerate(self.list_scenarios):
-            if scenario.scenario.behavior is not None:
-                route_var_name = scenario.config.route_var_name
-
-                if route_var_name is not None:
-                    scenario_behaviors.append(scenario.scenario.behavior)
-                    blackboard_list.append([scenario.config.route_var_name,
-                                            scenario.config.trigger_points[0].location])
-                else:
-                    name = "{} - {}".format(i, scenario.scenario.behavior.name)
-                    oneshot_idiom = oneshot_behavior(
-                        name=name,
-                        variable_name=name,
-                        behaviour=scenario.scenario.behavior)
-                    scenario_behaviors.append(oneshot_idiom)
-
-        # Add behavior that manages the scenarios trigger conditions
-        scenario_triggerer = ScenarioTriggerer(
-            self.ego_vehicles[0],
-            self.route,
-            blackboard_list,
-            scenario_trigger_distance,
-            repeat_scenarios=False
-        )
-
-        subbehavior.add_child(scenario_triggerer)  # make ScenarioTriggerer the first thing to be checked
-        subbehavior.add_children(scenario_behaviors)
-        subbehavior.add_child(Idle())  # The behaviours cannot make the route scenario stop
-        behavior.add_child(subbehavior)
-        return behavior
+        return sequence
 
     def _create_test_criteria(self):
         """
@@ -530,20 +473,20 @@ class RouteScenario(BasicScenario):
         criteria = []
         route = convert_transform_to_location(self.route)
 
-        collision_criterion = CollisionTest(self.ego_vehicles[0], terminate_on_failure=False)
+        collision_criterion = CollisionTest(self.ego_vehicles[0], terminate_on_failure=True)
 
         route_criterion = InRouteTest(self.ego_vehicles[0],
                                       route=route,
                                       offroad_max=30,
                                       terminate_on_failure=True)
                                       
-        completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route)
+        completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route)
+        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        red_light_criterion = RunningRedLightTest(self.ego_vehicles[0])
+        red_light_criterion = RunningRedLightTest(self.ego_vehicles[0], terminate_on_failure=False)
 
-        stop_criterion = RunningStopTest(self.ego_vehicles[0])
+        stop_criterion = RunningStopTest(self.ego_vehicles[0], terminate_on_failure=False)
 
         blocked_criterion = ActorSpeedAboveThresholdTest(self.ego_vehicles[0],
                                                          speed_threshold=0.1,
