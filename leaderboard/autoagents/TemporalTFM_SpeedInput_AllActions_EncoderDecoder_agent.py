@@ -152,8 +152,8 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions = [torch.cuda.FloatTensor(inputs_data[i]['actions']).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights, _, _ = self._model.forward_eval(norm_rgb, direction, norm_speed, actions)
-        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0)
-        steer, throttle, brake = self.process_control_outputs(last_action_outputs)
+        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy()
+        steer, throttle, brake = self.process_control_outputs(last_action_outputs.squeeze(0))
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)
