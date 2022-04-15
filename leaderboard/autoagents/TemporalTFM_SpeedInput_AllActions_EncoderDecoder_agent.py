@@ -28,7 +28,7 @@ from leaderboard.envs.sensor_interface import SensorInterface
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions, inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize
 from leaderboard.utils.waypointer import Waypointer
 from leaderboard.envs.data_writer import Writer
 
@@ -246,7 +246,10 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         Destroy (clean-up) the agent
         :return:
         """
-        pass
+        self._model = None
+        self.checkpoint = None
+        self.world = None
+        self.map = None
 
     def __call__(self):
         """
@@ -333,7 +336,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
-        return encode_directions(cmd.value), cmd.value
+        return encode_directions_4(cmd.value), cmd.value
 
     def saving_backbone_attention_maps(self, last_input, att_backbone_layers, inputs_data=None, action=None, speed=None):
         if not os.path.exists(self.attention_save_path+'_backbone_attn'):
