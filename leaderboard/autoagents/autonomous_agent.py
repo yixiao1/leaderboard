@@ -16,6 +16,7 @@ from srunner.scenariomanager.timer import GameTime
 
 from leaderboard.utils.route_manipulation import downsample_route
 from leaderboard.envs.sensor_interface import SensorInterface
+from leaderboard.envs.data_writer import Writer
 
 
 class Track(Enum):
@@ -32,7 +33,7 @@ class AutonomousAgent(object):
     Autonomous agent base class. All user agents have to be derived from this class
     """
 
-    def __init__(self, path_to_conf_file):
+    def __init__(self, path_to_conf_file, save_sensor=None):
         self.track = Track.SENSORS
         #  current global plans to reach a destination
         self._global_plan = None
@@ -42,11 +43,13 @@ class AutonomousAgent(object):
         self.sensor_interface = SensorInterface()
 
         # agent's initialization
-        self.setup(path_to_conf_file)
+        self.setup(path_to_conf_file, save_sensor)
+        if save_sensor is not None:
+            self.writer = Writer(save_sensor)
 
         self.wallclock_t0 = None
 
-    def setup(self, path_to_conf_file):
+    def setup(self, path_to_conf_file, save_sensor=None):
         """
         Initialize everything needed by your agent and set the track attribute to the right type:
             Track.SENSORS : CAMERAS, LIDAR, RADAR, GPS and IMU sensors are allowed

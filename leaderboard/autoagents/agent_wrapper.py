@@ -17,10 +17,10 @@ import time
 import carla
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from leaderboard.envs.sensor_interface import CallBack, OpenDriveMapReader, SpeedometerReader, SensorConfigurationInvalid
+from leaderboard.envs.sensor_interface import CallBack, OpenDriveMapReader, SpeedometerReader, SensorConfigurationInvalid, CanbusReader
 from leaderboard.autoagents.autonomous_agent import Track
 
-MAX_ALLOWED_RADIUS_SENSOR = 3.0
+MAX_ALLOWED_RADIUS_SENSOR = 10.0
 
 SENSORS_LIMITS = {
     'sensor.camera.rgb': 4,
@@ -56,7 +56,8 @@ class AgentWrapper(object):
         'sensor.lidar.ray_cast',
         'sensor.other.radar',
         'sensor.other.gnss',
-        'sensor.other.imu'
+        'sensor.other.imu',
+        'sensor.can_bus'
     ]
 
     _agent = None
@@ -85,11 +86,18 @@ class AgentWrapper(object):
             # These are the pseudosensors (not spawned)
             if sensor_spec['type'].startswith('sensor.opendrive_map'):
                 # The HDMap pseudo sensor is created directly here
-                sensor = OpenDriveMapReader(vehicle, sensor_spec['reading_frequency'])
+                delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
+                frame_rate = 1 / delta_time
+                sensor = OpenDriveMapReader(vehicle, frame_rate)
             elif sensor_spec['type'].startswith('sensor.speedometer'):
                 delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
                 frame_rate = 1 / delta_time
                 sensor = SpeedometerReader(vehicle, frame_rate)
+            elif sensor_spec['type'].startswith('sensor.can_bus'):
+                # The speedometer pseudo sensor is created directly here
+                delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
+                frame_rate = 1 / delta_time
+                sensor = CanbusReader(vehicle, frame_rate)
             # These are the sensors spawned on the carla world
             else:
                 bp = bp_library.find(str(sensor_spec['type']))
@@ -97,10 +105,12 @@ class AgentWrapper(object):
                     bp.set_attribute('image_size_x', str(sensor_spec['width']))
                     bp.set_attribute('image_size_y', str(sensor_spec['height']))
                     bp.set_attribute('fov', str(sensor_spec['fov']))
-                    bp.set_attribute('lens_circle_multiplier', str(3.0))
-                    bp.set_attribute('lens_circle_falloff', str(3.0))
-                    bp.set_attribute('chromatic_aberration_intensity', str(0.5))
-                    bp.set_attribute('chromatic_aberration_offset', str(0))
+                    # don't apply for an birdview camera
+                    if not sensor_spec['id'] == 'rgb_ontop':
+                        bp.set_attribute('lens_circle_multiplier', str(3.0))
+                        bp.set_attribute('lens_circle_falloff', str(3.0))
+                        bp.set_attribute('chromatic_aberration_intensity', str(0.5))
+                        bp.set_attribute('chromatic_aberration_offset', str(0))
 
                     sensor_location = carla.Location(x=sensor_spec['x'], y=sensor_spec['y'],
                                                      z=sensor_spec['z'])
@@ -144,9 +154,7 @@ class AgentWrapper(object):
                     bp.set_attribute('noise_lat_bias', str(0.0))
                     bp.set_attribute('noise_lon_bias', str(0.0))
 
-                    sensor_location = carla.Location(x=sensor_spec['x'],
-                                                     y=sensor_spec['y'],
-                                                     z=sensor_spec['z'])
+                    sensor_location = carla.Location()
                     sensor_rotation = carla.Rotation()
 
                 elif sensor_spec['type'].startswith('sensor.other.imu'):
@@ -157,22 +165,20 @@ class AgentWrapper(object):
                     bp.set_attribute('noise_gyro_stddev_y', str(0.001))
                     bp.set_attribute('noise_gyro_stddev_z', str(0.001))
 
-                    sensor_location = carla.Location(x=sensor_spec['x'],
-                                                     y=sensor_spec['y'],
-                                                     z=sensor_spec['z'])
-                    sensor_rotation = carla.Rotation(pitch=sensor_spec['pitch'],
-                                                     roll=sensor_spec['roll'],
-                                                     yaw=sensor_spec['yaw'])
+                    sensor_location = carla.Location()
+                    sensor_rotation = carla.Rotation()
                 # create sensor
                 sensor_transform = carla.Transform(sensor_location, sensor_rotation)
                 sensor = CarlaDataProvider.get_world().spawn_actor(bp, sensor_transform, vehicle)
             # setup callback
-            sensor.listen(CallBack(sensor_spec['id'], sensor_spec['type'], sensor, self._agent.sensor_interface))
+            sensor.listen(CallBack(sensor_spec['id'], sensor_spec['type'], sensor, self._agent.sensor_interface,
+                                   writer=self._agent.writer, global_plan=self._agent._global_plan))
             self._sensors_list.append(sensor)
 
-        # Tick once to spawn the sensors
-        CarlaDataProvider.get_world().tick()
+        time.sleep(2)
 
+        while not self._agent.sensor_interface.all_sensors_ready():
+            CarlaDataProvider.get_world().tick()
 
     @staticmethod
     def validate_sensor_configuration(sensors, agent_track, selected_track):
@@ -180,8 +186,9 @@ class AgentWrapper(object):
         Ensure that the sensor configuration is valid, in case the challenge mode is used
         Returns true on valid configuration, false otherwise
         """
-        if Track(selected_track) != agent_track:
-            raise SensorConfigurationInvalid("You are submitting to the wrong track [{}]!".format(Track(selected_track)))
+
+        #if Track(selected_track) != agent_track:
+        #    raise SensorConfigurationInvalid("You are submitting to the wrong track [{}]!".format(Track(selected_track)))
 
         sensor_count = {}
         sensor_ids = []

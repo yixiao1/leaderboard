@@ -67,36 +67,23 @@ class NpcAgent(AutonomousAgent):
 
         """
 
-        #sensors = [
-        #    {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 0.0,
-        #     'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_central'},
-
-        #    {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': -30.0,
-        #     'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_left'},
-
-        #    {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 30.0,
-        #     'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_right'},
-
-        #    {'type': 'sensor.other.gnss', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'id': 'GPS'},
-
-        #    {'type': 'sensor.other.imu', 'id': 'IMU'},
-
-        #    {'type': 'sensor.speedometer', 'reading_frequency': 20, 'id': 'SPEED'},
-
-        #    {'type': 'sensor.can_bus', 'reading_frequency': 20, 'id': 'can_bus'}
-        #]
-
         sensors = [
-            {'type': 'sensor.camera.rgb', 'x': -1.5, 'y': 0.0, 'z': 2.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-             'width': 900, 'height': 256, 'fov': 100, 'id': 'rgb_central'},
+            {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 0.0,
+             'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_central'},
 
-            {'type': 'sensor.other.gnss', 'id': 'GPS'},
+            {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': -30.0,
+             'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_left'},
+
+            {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 30.0,
+             'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_right'},
+
+            {'type': 'sensor.other.gnss', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'id': 'GPS'},
 
             {'type': 'sensor.other.imu', 'id': 'IMU'},
 
-            {'type': 'sensor.speedometer', 'id': 'SPEED'},
+            {'type': 'sensor.speedometer', 'reading_frequency': 20, 'id': 'SPEED'},
 
-            {'type': 'sensor.can_bus', 'id': 'can_bus'}
+            {'type': 'sensor.can_bus', 'reading_frequency': 20, 'id': 'can_bus'}
         ]
 
         return sensors

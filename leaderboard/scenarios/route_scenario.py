@@ -16,6 +16,8 @@ import xml.etree.ElementTree as ET
 import numpy.random as random
 
 import py_trees
+import os
+import matplotlib.pyplot as plt
 
 import carla
 
@@ -35,6 +37,13 @@ from srunner.scenarios.other_leading_vehicle import OtherLeadingVehicle
 from srunner.scenarios.maneuver_opposite_direction import ManeuverOppositeDirection
 from srunner.scenarios.junction_crossing_route import SignalJunctionCrossingRoute, NoSignalJunctionCrossingRoute
 
+from srunner.scenarios.control_loss_YiXiao import ControlLoss
+from srunner.scenarios.follow_leading_vehicle_YiXiao import FollowLeadingVehicleWithObstacle
+from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
+from srunner.scenarios.object_crash_intersection_YiXiao import VehicleTurningRoute
+from srunner.scenarios.junction_crossing_route_YiXiao import SignalJunctionLeadingVehicleCrossingTrafficLight, SignalJunctionGreenTrafficLightObstacleCrossing
+
+
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTest,
                                                                      InRouteTest,
                                                                      RouteCompletionTest,
@@ -45,6 +54,7 @@ from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTe
 
 from leaderboard.utils.route_parser import RouteParser, TRIGGER_THRESHOLD, TRIGGER_ANGLE_THRESHOLD
 from leaderboard.utils.route_manipulation import interpolate_trajectory
+from tools.utils import draw_map, draw_point_data
 
 ROUTESCENARIO = ["RouteScenario"]
 
@@ -53,7 +63,7 @@ INITIAL_SECONDS_DELAY = 5.0
 
 NUMBER_CLASS_TRANSLATION = {
     "Scenario1": ControlLoss,
-    "Scenario2": FollowLeadingVehicle,
+    "Scenario2": FollowLeadingVehicleWithObstacle, #FollowLeadingVehicle,
     "Scenario3": DynamicObjectCrossing,
     "Scenario4": VehicleTurningRoute,
     "Scenario5": OtherLeadingVehicle,
@@ -62,6 +72,15 @@ NUMBER_CLASS_TRANSLATION = {
     "Scenario8": SignalJunctionCrossingRoute,
     "Scenario9": SignalJunctionCrossingRoute,
     "Scenario10": NoSignalJunctionCrossingRoute
+}
+
+SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
+    "Scenario1": ControlLoss,
+    "Scenario2": FollowLeadingVehicleWithObstacle,
+    "Scenario3": DynamicObjectCrossing,
+    "Scenario4": VehicleTurningRoute,
+    "Scenario5": SignalJunctionLeadingVehicleCrossingTrafficLight,
+    "Scenario6": SignalJunctionGreenTrafficLightObstacleCrossing
 }
 
 
@@ -185,7 +204,6 @@ class RouteScenario(BasicScenario):
         self.config = config
         self.route = None
         self.sampled_scenarios_definitions = None
-        self.background_amount = 0
 
         self._update_route(world, config, debug_mode>0)
 
@@ -221,8 +239,10 @@ class RouteScenario(BasicScenario):
         # prepare route's trajectory (interpolate and add the GPS route)
         gps_route, route = interpolate_trajectory(world, config.trajectory)
 
+        print(' ')
+        print('route name', config.name)
         potential_scenarios_definitions, _ = RouteParser.scan_route_for_scenarios(
-            config.town, route, world_annotations)
+            config, route, world_annotations)
 
         self.route = route
         CarlaDataProvider.set_ego_vehicle_route(convert_transform_to_location(self.route))
@@ -232,12 +252,55 @@ class RouteScenario(BasicScenario):
         # Sample the scenarios to be used for this route instance.
         self.sampled_scenarios_definitions = self._scenario_sampling(potential_scenarios_definitions)
 
+        print(' ')
+        print('sampled_scenarios_definitions')
+        print(self.sampled_scenarios_definitions)
+
         # Timeout of scenario in seconds
         self.timeout = self._estimate_route_timeout()
 
         # Print route in debug mode
         if debug_mode:
             self._draw_waypoints(world, self.route, vertical_shift=1.0, persistency=50000.0)
+
+        if True:
+            save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name)
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
+            trajectories_fig = plt.figure(0)
+            if config.town == 'Town01':
+                plt.xlim(-500, 5000)
+                plt.ylim(-500, 4500)
+            elif config.town == 'Town02':
+                plt.xlim(-250, 2500)
+                plt.ylim(1000, 4000)
+
+            draw_map(world)
+
+            count=0
+            for wp in self.route:
+                datapoint = [wp[0].location.x, wp[0].location.y, wp[0].location.z]
+                draw_point_data(datapoint, trajectories_fig)
+
+            for wp_tj in config.trajectory:
+                datapoint = [wp_tj.x, wp_tj.y, wp_tj.z]
+                if count == 0:
+                        draw_point_data(datapoint, trajectories_fig, color=(0/ 255.0, 0/ 255.0, 255/ 255.0), size=30, text=(round(wp_tj.x,2), round(wp_tj.y, 2)))
+                else:
+                    if count == len(config.trajectory)-1:
+                        draw_point_data(datapoint, trajectories_fig, color=(252/ 255.0, 175/ 255.0, 62/ 255.0), size=20, text=(round(wp_tj.x,2), round(wp_tj.y, 2)))
+                    else:
+                        draw_point_data(datapoint, trajectories_fig, color=(252 / 255.0, 175 / 255.0, 62 / 255.0), size=20)
+                count += 1
+
+            for scenarios_definition in self.sampled_scenarios_definitions:
+                trigger_position=scenarios_definition['trigger_position']
+                datapoint = [trigger_position['x'], trigger_position['y'], trigger_position['z']]
+                draw_point_data(datapoint, trajectories_fig, color=(0.0/ 255.0, 255.0/ 255.0, 0.0/ 255.0), size=20, text=(trigger_position['x'], trigger_position['y'], trigger_position['yaw']))
+
+            trajectories_fig.savefig(os.path.join(save_path, config.name + '.png'),
+                                     orientation='landscape', bbox_inches='tight', dpi=1200)
+            plt.close(trajectories_fig)
 
     def _update_ego_vehicle(self):
         """
@@ -247,7 +310,7 @@ class RouteScenario(BasicScenario):
         elevate_transform = self.route[0][0]
         elevate_transform.location.z += 0.5
 
-        ego_vehicle = CarlaDataProvider.request_new_actor('vehicle.lincoln.mkz_2017',
+        ego_vehicle = CarlaDataProvider.request_new_actor('vehicle.lincoln.mkz2017',
                                                           elevate_transform,
                                                           rolename='hero')
 
@@ -375,7 +438,7 @@ class RouteScenario(BasicScenario):
 
         for scenario_number, definition in enumerate(scenario_definitions):
             # Get the class possibilities for this scenario number
-            scenario_class = NUMBER_CLASS_TRANSLATION[definition['name']]
+            scenario_class = SELFDEFINED_NUMBER_CLASS_TRANSLATION[definition['name']]
 
             # Create the other actors that are going to appear
             if definition['other_actors'] is not None:
@@ -389,7 +452,7 @@ class RouteScenario(BasicScenario):
             scenario_configuration.other_actors = list_of_actor_conf_instances
             scenario_configuration.trigger_points = [egoactor_trigger_position]
             scenario_configuration.subtype = definition['scenario_type']
-            scenario_configuration.ego_vehicles = [ActorConfigurationData('vehicle.lincoln.mkz_2017',
+            scenario_configuration.ego_vehicles = [ActorConfigurationData('vehicle.lincoln.mkz2017',
                                                                           ego_vehicle.get_transform(),
                                                                           'hero')]
             route_var_name = "ScenarioRouteNumber{}".format(scenario_number)
@@ -460,10 +523,20 @@ class RouteScenario(BasicScenario):
             'Town10': 120,
         }
 
-        self.background_amount = town_amount.get(config.town, 0)
+        scenario_amount = {
+            'Scenario1': 0,
+            'Scenario2': 0,
+            'Scenario3': 0,
+            'Scenario4': 0,
+            'Scenario5': 0,
+            'Scenario6': 0,
+        }
+
+        #amount = town_amount[config.town] if config.town in town_amount else 0
+        amount = scenario_amount[config.defined_available_senarios_list[0]] if config.defined_available_senarios_list[0] in scenario_amount else 0
 
         new_actors = CarlaDataProvider.request_new_batch_actors('vehicle.*',
-                                                                self.background_amount,
+                                                                amount,
                                                                 carla.Transform(),
                                                                 autopilot=True,
                                                                 random_location=True,
@@ -537,13 +610,13 @@ class RouteScenario(BasicScenario):
                                       offroad_max=30,
                                       terminate_on_failure=True)
                                       
-        completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route)
+        completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route)
+        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        red_light_criterion = RunningRedLightTest(self.ego_vehicles[0])
+        red_light_criterion = RunningRedLightTest(self.ego_vehicles[0], terminate_on_failure=False)
 
-        stop_criterion = RunningStopTest(self.ego_vehicles[0])
+        stop_criterion = RunningStopTest(self.ego_vehicles[0], terminate_on_failure=False)
 
         blocked_criterion = ActorSpeedAboveThresholdTest(self.ego_vehicles[0],
                                                          speed_threshold=0.1,

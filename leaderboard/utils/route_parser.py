@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 import carla
 from agents.navigation.local_planner import RoadOption
 from srunner.scenarioconfigs.route_scenario_configuration import RouteScenarioConfiguration
+from leaderboard.scenarios import route_scenario
 
 # TODO  check this threshold, it could be a bit larger but not so large that we cluster scenarios.
 TRIGGER_THRESHOLD = 2.0  # Threshold to say if a trigger position is new or repeated, works for matching positions
@@ -44,7 +45,7 @@ class RouteParser(object):
         return final_dict  # the file has a current maps name that is an one element vec
 
     @staticmethod
-    def parse_routes_file(route_filename, scenario_file, single_route_id=''):
+    def parse_routes_file(route_filename, scenario_file, single_route=None):
         """
         Returns a list of route elements.
         :param route_filename: the path to a set of routes.
@@ -57,14 +58,16 @@ class RouteParser(object):
         for route in tree.iter("route"):
 
             route_id = route.attrib['id']
-            if single_route_id and route_id != single_route_id:
+            if single_route and route_id != single_route:
                 continue
 
             new_config = RouteScenarioConfiguration()
             new_config.town = route.attrib['town']
-            new_config.name = "RouteScenario_{}".format(route_id)
+            new_config.defined_available_senarios_list = RouteParser.parse_scenario(route)
+            new_config.name = "RouteScenario_{}".format(route_id) + '_'+'_'.join(new_config.defined_available_senarios_list)
             new_config.weather = RouteParser.parse_weather(route)
             new_config.scenario_file = scenario_file
+            new_config.package_name = route_filename.split('/')[-1].split('.')[-2]
 
             waypoint_list = []  # the list of waypoints that can be found on this route
             for waypoint in route.iter('waypoint'):
@@ -93,30 +96,77 @@ class RouteParser(object):
         else:
             weather = carla.WeatherParameters()
             for weather_attrib in route.iter("weather"):
-
-                if 'cloudiness' in weather_attrib.attrib:
-                    weather.cloudiness = float(weather_attrib.attrib['cloudiness']) 
-                if 'precipitation' in weather_attrib.attrib:
-                    weather.precipitation = float(weather_attrib.attrib['precipitation'])
-                if 'precipitation_deposits' in weather_attrib.attrib:
-                    weather.precipitation_deposits =float(weather_attrib.attrib['precipitation_deposits'])
-                if 'wind_intensity' in weather_attrib.attrib:
-                    weather.wind_intensity = float(weather_attrib.attrib['wind_intensity'])
-                if 'sun_azimuth_angle' in weather_attrib.attrib:
-                    weather.sun_azimuth_angle = float(weather_attrib.attrib['sun_azimuth_angle'])
-                if 'sun_altitude_angle' in weather_attrib.attrib:
-                    weather.sun_altitude_angle = float(weather_attrib.attrib['sun_altitude_angle'])
-                if 'wetness' in weather_attrib.attrib:
-                    weather.wetness = float(weather_attrib.attrib['wetness'])
-                if 'fog_distance' in weather_attrib.attrib:
-                    weather.fog_distance = float(weather_attrib.attrib['fog_distance'])
-                if 'fog_density' in weather_attrib.attrib:
-                    weather.fog_density = float(weather_attrib.attrib['fog_density'])
-                if 'fog_falloff' in weather_attrib.attrib:
-                    weather.fog_falloff = float(weather_attrib.attrib['fog_falloff'])
+                if 'preset' in weather_attrib.attrib:
+                    preset_weather = weather_attrib.attrib['preset']
+                    if preset_weather == 'ClearNoon':
+                        weather = carla.WeatherParameters.ClearNoon
+                    elif preset_weather == 'CloudyNoon':
+                        weather = carla.WeatherParameters.CloudyNoon
+                    elif preset_weather == 'WetNoon':
+                        weather = carla.WeatherParameters.WetNoon
+                    elif preset_weather == 'WetCloudyNoon':
+                        weather = carla.WeatherParameters.WetCloudyNoon
+                    elif preset_weather == 'MidRainyNoon':
+                        weather = carla.WeatherParameters.MidRainyNoon
+                    elif preset_weather == 'HardRainNoon':
+                        weather = carla.WeatherParameters.HardRainNoon
+                    elif preset_weather == 'SoftRainNoon':
+                        weather = carla.WeatherParameters.SoftRainNoon
+                    elif preset_weather == 'ClearSunset':
+                        weather = carla.WeatherParameters.ClearSunset
+                    elif preset_weather == 'CloudySunset':
+                        weather = carla.WeatherParameters.CloudySunset
+                    elif preset_weather == 'WetSunset':
+                        weather = carla.WeatherParameters.WetSunset
+                    elif preset_weather == 'WetCloudySunset':
+                        weather = carla.WeatherParameters.WetCloudySunset
+                    elif preset_weather == 'MidRainSunset':
+                        weather = carla.WeatherParameters.MidRainSunset
+                    elif preset_weather == 'HardRainSunset':
+                        weather = carla.WeatherParameters.HardRainSunset
+                    elif preset_weather == 'SoftRainSunset':
+                        weather = carla.WeatherParameters.SoftRainSunset
+                else:
+                    if 'cloudiness' in weather_attrib.attrib:
+                        weather.cloudiness = float(weather_attrib.attrib['cloudiness'])
+                    if 'precipitation' in weather_attrib.attrib:
+                        weather.precipitation = float(weather_attrib.attrib['precipitation'])
+                    if 'precipitation_deposits' in weather_attrib.attrib:
+                        weather.precipitation_deposits =float(weather_attrib.attrib['precipitation_deposits'])
+                    if 'wind_intensity' in weather_attrib.attrib:
+                        weather.wind_intensity = float(weather_attrib.attrib['wind_intensity'])
+                    if 'sun_azimuth_angle' in weather_attrib.attrib:
+                        weather.sun_azimuth_angle = float(weather_attrib.attrib['sun_azimuth_angle'])
+                    if 'sun_altitude_angle' in weather_attrib.attrib:
+                        weather.sun_altitude_angle = float(weather_attrib.attrib['sun_altitude_angle'])
+                    if 'wetness' in weather_attrib.attrib:
+                        weather.wetness = float(weather_attrib.attrib['wetness'])
+                    if 'fog_distance' in weather_attrib.attrib:
+                        weather.fog_distance = float(weather_attrib.attrib['fog_distance'])
+                    if 'fog_density' in weather_attrib.attrib:
+                        weather.fog_density = float(weather_attrib.attrib['fog_density'])
+                    if 'fog_falloff' in weather_attrib.attrib:
+                        weather.fog_falloff = float(weather_attrib.attrib['fog_falloff'])
 
         return weather
 
+    @staticmethod
+    def parse_scenario(route):
+        """
+        Returns a carla.WeatherParameters with the corresponding weather for that route. If the route
+        has no weather attribute, the default one is triggered.
+        """
+
+        route_scenario_exist = route.find("scenario")
+        if route_scenario_exist is None:
+            scenario_types_list = list(route_scenario.SELFDEFINED_NUMBER_CLASS_TRANSLATION.keys())
+        else:
+            scenario_types_list =[]
+            for scenario_attrib in route.iter("scenario"):
+                for _, scenario_name in scenario_attrib.attrib.items():
+                    scenario_types_list.append(scenario_name)
+
+        return scenario_types_list
 
     @staticmethod
     def check_trigger_position(new_trigger, existing_triggers):
@@ -164,11 +214,11 @@ class RouteParser(object):
             dx = float(waypoint1['x']) - wtransform.location.x
             dy = float(waypoint1['y']) - wtransform.location.y
             dz = float(waypoint1['z']) - wtransform.location.z
-            dpos = math.sqrt(dx * dx + dy * dy)
+            dpos = math.sqrt(dx * dx + dy * dy + dz * dz)
 
             dyaw = (float(waypoint1['yaw']) - wtransform.rotation.yaw) % 360
 
-            return dz < TRIGGER_THRESHOLD and dpos < TRIGGER_THRESHOLD \
+            return dpos < TRIGGER_THRESHOLD \
                 and (dyaw < TRIGGER_ANGLE_THRESHOLD or dyaw > (360 - TRIGGER_ANGLE_THRESHOLD))
 
         match_position = 0
@@ -262,7 +312,54 @@ class RouteParser(object):
         return subtype
 
     @staticmethod
-    def scan_route_for_scenarios(route_name, trajectory, world_annotations):
+    def get_self_defined_scenario_type(scenario, match_position, trajectory):
+        """
+        Some scenarios have different types depending on the route.
+        :param scenario: the scenario name
+        :param match_position: the matching position for the scenarion
+        :param trajectory: the route trajectory the ego is following
+        :return: tag representing this subtype
+
+        Also used to check which are not viable (Such as an scenario
+        that triggers when turning but the route doesnt')
+        WARNING: These tags are used at:
+            - VehicleTurningRoute
+            - SignalJunctionCrossingRoute
+        and changes to these tags will affect them
+        """
+
+        def check_this_waypoint(tuple_wp_turn):
+            """
+            Decides whether or not the waypoint will define the scenario behavior
+            """
+            if RoadOption.LANEFOLLOW == tuple_wp_turn[1]:
+                return False
+            elif RoadOption.CHANGELANELEFT == tuple_wp_turn[1]:
+                return False
+            elif RoadOption.CHANGELANERIGHT == tuple_wp_turn[1]:
+                return False
+            return True
+
+        # Unused tag for the rest of scenarios,
+        # can't be None as they are still valid scenarios
+        subtype = 'valid'
+
+        if scenario == 'Scenario4':
+            for tuple_wp_turn in trajectory[match_position:]:
+                if check_this_waypoint(tuple_wp_turn):
+                    if RoadOption.LEFT == tuple_wp_turn[1]:
+                        subtype = 'S4left'
+                    elif RoadOption.RIGHT == tuple_wp_turn[1]:
+                        subtype = 'S4right'
+                    else:
+                        subtype = None
+                    break  # Avoid checking all of them
+                subtype = None
+
+        return subtype
+
+    @staticmethod
+    def scan_route_for_scenarios(config, trajectory, world_annotations):
         """
         Just returns a plain list of possible scenarios that can happen in this route by matching
         the locations from the scenario into the route description
@@ -277,6 +374,7 @@ class RouteParser(object):
 
         # Keep track of the trigger ids being added
         latest_trigger_id = 0
+        route_name = config.town
 
         for town_name in world_annotations.keys():
             if town_name != route_name:
@@ -285,6 +383,8 @@ class RouteParser(object):
             scenarios = world_annotations[town_name]
             for scenario in scenarios:  # For each existent scenario
                 scenario_name = scenario["scenario_type"]
+                if not scenario_name in config.defined_available_senarios_list:
+                    continue
                 for event in scenario["available_event_configurations"]:
                     waypoint = event['transform']  # trigger point of this scenario
                     RouteParser.convert_waypoint_float(waypoint)
@@ -299,7 +399,9 @@ class RouteParser(object):
                             other_vehicles = event['other_actors']
                         else:
                             other_vehicles = None
-                        scenario_subtype = RouteParser.get_scenario_type(scenario_name, match_position,
+                        #scenario_subtype = RouteParser.get_scenario_type(scenario_name, match_position,
+                        #                                                 trajectory)
+                        scenario_subtype = RouteParser.get_self_defined_scenario_type(scenario_name, match_position,
                                                                          trajectory)
                         if scenario_subtype is None:
                             continue
