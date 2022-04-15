@@ -88,7 +88,6 @@ class LeaderboardEvaluator(object):
         if args.timeout:
             self.client_timeout = float(args.timeout)
         self.client.set_timeout(self.client_timeout)
-        time.sleep(10)
 
         self.traffic_manager = self.client.get_trafficmanager(int(args.trafficManagerPort))
 
@@ -132,6 +131,10 @@ class LeaderboardEvaluator(object):
             del self.manager
         if hasattr(self, 'world') and self.world:
             del self.world
+        if hasattr(self, 'client') and self.client:
+            del self.client
+        if hasattr(self, 'traffic_manager') and self.traffic_manager:
+            del self.traffic_manager
 
     def _cleanup(self):
         """
@@ -211,12 +214,16 @@ class LeaderboardEvaluator(object):
         """
 
         town = config.town
+        print('  port:', args.port)
         self.world = self.client.load_world(town)
         self.world.set_weather(config.weather)
         settings = self.world.get_settings()
         settings.fixed_delta_seconds = 1.0 / self.frame_rate
         settings.synchronous_mode = True
         self.world.apply_settings(settings)
+
+        self.world.set_pedestrians_seed(int(args.PedestriansSeed))
+        print('Set seed for pedestrians:', str(int(args.PedestriansSeed)))
 
         self.world.reset_all_traffic_lights()
         if 'background_activity' in list(config.scenarios.keys()):
@@ -229,6 +236,7 @@ class LeaderboardEvaluator(object):
 
         self.traffic_manager.set_synchronous_mode(True)
         self.traffic_manager.set_random_device_seed(int(args.trafficManagerSeed))
+        print('Set seed for traffic manager:', str(int(args.trafficManagerSeed)))
 
         # Wait for the world to be ready
         if CarlaDataProvider.is_sync_mode():
@@ -236,7 +244,7 @@ class LeaderboardEvaluator(object):
         else:
             self.world.wait_for_tick()
 
-        if CarlaDataProvider.get_map().name != town:
+        if CarlaDataProvider.get_map().name.split('/')[-1] != town:
             raise Exception("The CARLA server uses the wrong map!"
                             "This scenario requires to use map {}".format(town))
 
@@ -307,26 +315,25 @@ class LeaderboardEvaluator(object):
             self._agent_watchdog.stop()
 
         except SensorConfigurationInvalid as e:
-            # The sensors are invalid -> set the ejecution to rejected and stop
+            # The sensors are invalid -> set the execution to rejected and stop
             print("\n\033[91mThe sensor's configuration used is invalid:")
             print("> {}\033[0m\n".format(e))
             traceback.print_exc()
 
             crash_message = "Agent's sensors were invalid"
             entry_status = "Rejected"
-
             self._register_statistics(config, args.checkpoint, entry_status, crash_message)
             self._cleanup()
             sys.exit(-1)
 
         except Exception as e:
-            # The agent setup has failed -> start the next route
+            # The agent setup has failed -> set the execution to rejected and stop
             print("\n\033[91mCould not set up the required agent:")
             print("> {}\033[0m\n".format(e))
             traceback.print_exc()
 
             crash_message = "Agent couldn't be set up"
-
+            entry_status = "Rejected"
             self._register_statistics(config, args.checkpoint, entry_status, crash_message)
             self._cleanup()
             sys.exit(-1)
@@ -337,7 +344,7 @@ class LeaderboardEvaluator(object):
         try:
             self._load_and_wait_for_world(args, config)
             self.agent_instance.set_world(self.world)
-            self._prepare_ego_vehicles(config.ego_vehicles, False)
+            #self._prepare_ego_vehicles(config.ego_vehicles, False)
             scenario = RouteScenario(world=self.world, config=config, debug_mode=args.debug)
             self.statistics_manager.set_scenario(scenario.scenario)
 
@@ -352,14 +359,13 @@ class LeaderboardEvaluator(object):
             self.manager.load_scenario(scenario, self.agent_instance, config.repetition_index)
 
         except Exception as e:
-            # The scenario is wrong -> set the ejecution to crashed and stop
+            # The scenario is wrong -> set the execution to crashed and stop
             print("\n\033[91mThe scenario could not be loaded:")
             print("> {}\033[0m\n".format(e))
             traceback.print_exc()
 
             crash_message = "Simulation crashed"
             entry_status = "Crashed"
-
             self._register_statistics(config, args.checkpoint, entry_status, crash_message)
 
             if args.record:
@@ -375,12 +381,16 @@ class LeaderboardEvaluator(object):
             self.manager.run_scenario(args.save_sensors)
 
         except AgentError as e:
-            # The agent has failed -> stop the route
+            # The agent has failed -> set the execution to crashed and stop
             print("\n\033[91mStopping the route, the agent has crashed:")
             print("> {}\033[0m\n".format(e))
             traceback.print_exc()
 
             crash_message = "Agent crashed"
+            entry_status = "Crashed"
+            self._register_statistics(config, args.checkpoint, entry_status, crash_message)
+            self._cleanup()
+            sys.exit(-1)
 
         except Exception as e:
             print("\n\033[91mError during the simulation:")
@@ -389,6 +399,9 @@ class LeaderboardEvaluator(object):
 
             crash_message = "Simulation crashed"
             entry_status = "Crashed"
+            self._register_statistics(config, args.checkpoint, entry_status, crash_message)
+            self._cleanup()
+            sys.exit(-1)
 
         # Stop the scenario
         try:
@@ -410,8 +423,9 @@ class LeaderboardEvaluator(object):
             traceback.print_exc()
 
             crash_message = "Simulation crashed"
-
-        if crash_message == "Simulation crashed":
+            entry_status = "Crashed"
+            self._register_statistics(config, args.checkpoint, entry_status, crash_message)
+            self._cleanup()
             sys.exit(-1)
 
     def run(self, args):
@@ -430,7 +444,6 @@ class LeaderboardEvaluator(object):
         while route_indexer.peek():
             # setup
             config = route_indexer.next()
-
             # run
             self._load_and_run_scenario(args, config)
 
@@ -442,7 +455,6 @@ class LeaderboardEvaluator(object):
         StatisticsManager.save_global_record(global_stats_record, self.sensor_icons, route_indexer.total, args.checkpoint)
         if self.ServerDocker is not None:
             self.ServerDocker.stop()
-
 
 def main():
     description = "CARLA AD Leaderboard Evaluation: evaluate your Agent in CARLA scenarios\n"
@@ -456,6 +468,8 @@ def main():
                         help='Port to use for the TrafficManager (default: 8000)')
     parser.add_argument('--trafficManagerSeed', default='0',
                         help='Seed used by the TrafficManager (default: 0)')
+    parser.add_argument('--PedestriansSeed', default='0',
+                        help='Seed used by the Pedestrians setting (default: 0)')
     parser.add_argument('--debug', type=int, help='Run with debug output', default=0)
     parser.add_argument('--record', type=str, default='',
                         help='Use CARLA recording feature to create a recording of the scenario')
@@ -480,7 +494,7 @@ def main():
 
     parser.add_argument('--save-sensors', action="store_true", help='to save sensor images')
     parser.add_argument('--save-attention', action="store_true", help=' to save the last attention layer of backbone')
-    parser.add_argument('--fps', default=20, help='The frame rate of CARLA world')
+    parser.add_argument('--fps', default=10, help='The frame rate of CARLA world')
 
     arguments = parser.parse_args()
 
@@ -520,12 +534,13 @@ def main():
     try:
         leaderboard_evaluator = LeaderboardEvaluator(arguments, statistics_manager, ServerDocker)
         leaderboard_evaluator.run(arguments)
-
     except Exception as e:
         traceback.print_exc()
+        sys.exit(-1)
     finally:
         del leaderboard_evaluator
 
 
 if __name__ == '__main__':
     main()
+    print('Finished all episode. Goodbye!')

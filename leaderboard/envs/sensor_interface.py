@@ -69,8 +69,7 @@ class BaseReader(object):
                 current_time = GameTime.get_time()
 
                 # Second part forces the sensors to send data at the first tick, regardless of frequency
-                if current_time - latest_time > (1 / self._reading_frequency) or first_time:
-                        #or (first_time and GameTime.get_frame() != 0):
+                if current_time - latest_time > (1 / self._reading_frequency) or first_time or (first_time and GameTime.get_frame() != 0):
                     self._callback(GenericMeasurement(self.__call__(), GameTime.get_frame()))
                     latest_time = GameTime.get_time()
                     first_time = False

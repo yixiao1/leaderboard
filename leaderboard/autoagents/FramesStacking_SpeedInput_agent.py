@@ -28,7 +28,7 @@ from leaderboard.envs.sensor_interface import SensorInterface
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions, inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6, inverse_normalize
 from leaderboard.utils.waypointer import Waypointer
 from leaderboard.envs.data_writer import Writer
 
@@ -123,40 +123,14 @@ class FramesStacking_SpeedInput_agent(object):
 
         :return: a list containing the required sensors in the following format:
 
-        [
-            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': -0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-                      'width': 300, 'height': 200, 'fov': 100, 'id': 'Left'},
-
-            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': 0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-                      'width': 300, 'height': 200, 'fov': 100, 'id': 'Right'},
-
-            {'type': 'sensor.lidar.ray_cast', 'x': 0.7, 'y': 0.0, 'z': 1.60, 'yaw': 0.0, 'pitch': 0.0, 'roll': 0.0,
-             'id': 'LIDAR'}
-        ]
-
-        ## This is the default setting
-        sensors = [
-            {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 0.0,
-             'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_central'},
-
-            #{'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': -30.0,
-            # 'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_left'},
-
-            #{'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 30.0,
-            # 'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_right'},
-
-            {'type': 'sensor.other.gnss', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'id': 'GPS'},
-
-            {'type': 'sensor.speedometer', 'reading_frequency': 20, 'id': 'SPEED'},
-
-            {'type': 'sensor.can_bus', 'reading_frequency': 20, 'id': 'can_bus'}
-        ]
-
         """
 
         sensors = [
             {'type': 'sensor.camera.rgb', 'x': -1.5, 'y': 0.0, 'z': 2.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-             'width': 600, 'height': 170, 'fov': 100, 'id': 'rgb_central'},
+             'width': 900, 'height': 256, 'fov': 100, 'id': 'rgb_central'},
+
+            {'type': 'sensor.camera.rgb', 'x': 0.0, 'y': 0.0, 'z': 7.0, 'roll': 0.0, 'pitch': -90.0, 'yaw': 0.0,
+             'width': 450, 'height': 450, 'fov': 150, 'id': 'rgb_ontop'},
 
             {'type': 'sensor.other.gnss', 'id': 'GPS'},
 
@@ -181,30 +155,31 @@ class FramesStacking_SpeedInput_agent(object):
         direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0) for i in range(len(inputs_data))]
         
         actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, direction, norm_speed)
-        steer, throttle, brake = self.process_control_outputs(actions_outputs[:, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
+        steer, throttle, brake = self.process_control_outputs(actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)
         control.hand_brake = False
 
         if self.attention_save_path:
-            if not os.path.exists(self.attention_save_path+'_backbone_attn'):
-                os.makedirs(self.attention_save_path+'_backbone_attn')
             if not os.path.exists(self.attention_save_path):
                 os.makedirs(self.attention_save_path)
 
-            last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'], g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
+            last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
+                                           g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
             cmap_2 = plt.get_cmap('jet')
 
             att = np.delete(cmap_2(np.abs(attention_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
                 attention_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
             att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
-                    (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
+                (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
             last_att = Image.fromarray(att)
-            input = last_input.transpose(1, 2, 0) * 255
-            input = input.astype(np.uint8)
-            input = Image.fromarray(input)
-            blend_im = Image.blend(input, last_att, 0.7)
+            last_input = last_input.transpose(1, 2, 0) * 255
+            last_input = last_input.astype(np.uint8)
+            last_input = Image.fromarray(last_input)
+            blend_im = Image.blend(last_input, last_att, 0.7)
+
+            last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
             if float(cmd) == 1.0:
@@ -233,22 +208,27 @@ class FramesStacking_SpeedInput_agent(object):
 
             command_sign = command_sign.resize((130, 40))
 
-            #blend_im.paste(command_sign, (180, 10), command_sign)
-            #blend_im.paste(command_sign, (230, 10), command_sign)
-            input.paste(command_sign, (230, 10), command_sign)
+            mat = Image.new('RGB', (
+                last_input_ontop.width + last_input.width, max(last_input_ontop.height, last_input.height * 2)),
+                            (0, 0, 0))
+            mat.paste(command_sign, (last_input_ontop.width + 230, last_input.height * 2 + 20))
 
-            #draw = ImageDraw.Draw(blend_im)
-            draw = ImageDraw.Draw(input)
+            mat.paste(last_input_ontop, (0, 0))
+            mat.paste(last_input, (last_input_ontop.width, 0))
+            mat.paste(blend_im, (last_input_ontop.width, last_input.height))
 
+            draw_mat = ImageDraw.Draw(mat)
             font = ImageFont.truetype(os.path.join(os.getcwd(), 'signs', 'arial.ttf'), 20)
+            draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - 30), str("Steer " + "%.3f" % steer),
+                          fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 180, last_input_ontop.height - 30),
+                          str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - 30), str("Brake " + "%.3f" % brake),
+                          fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
+                              str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
+            mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
 
-            draw.text((46, 150), str("Steer " + "%.3f" % steer), fill=(0, 0, 255), font=font)
-            draw.text((185, 150), str("Throttle " + "%.3f" % throttle), fill=(0, 0, 255), font=font)
-            draw.text((320, 150), str("Brake " + "%.3f" % brake), fill=(0, 0, 255), font=font)
-            draw.text((450, 150), str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(0, 0, 255), font=font)
-
-            blend_im.save(os.path.join(self.attention_save_path+'_backbone_attn', str(self.att_count).zfill(6) + '.png'))
-            input.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
             self.att_count += 1
 
         return control
@@ -306,7 +286,7 @@ class FramesStacking_SpeedInput_agent(object):
         wallclock = GameTime.get_wallclocktime()
         wallclock_diff = (wallclock - self.wallclock_t0).total_seconds()
 
-        print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
+        #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
 
         if len(self.inputs_buffer.queue) <= ((g_conf.ENCODER_INPUT_FRAMES_NUM - 1) * g_conf.ENCODER_STEP_INTERVAL):
             print('=== The agent is stopping and waitting for the input buffer ...')
@@ -366,5 +346,8 @@ class FramesStacking_SpeedInput_agent(object):
             self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
-        return encode_directions(cmd.value), cmd.value
+        if g_conf.DATA_COMMAND_CLASS_NUM == 4:
+            return encode_directions_4(cmd.value), cmd.value
+        elif g_conf.DATA_COMMAND_CLASS_NUM == 6:
+            return encode_directions_6(cmd.value), cmd.value
 

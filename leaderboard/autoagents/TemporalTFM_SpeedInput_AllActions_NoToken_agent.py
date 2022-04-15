@@ -28,7 +28,7 @@ from leaderboard.envs.sensor_interface import SensorInterface
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions, inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize
 from leaderboard.utils.waypointer import Waypointer
 from leaderboard.envs.data_writer import Writer
 
@@ -119,45 +119,14 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
 
         :return: a list containing the required sensors in the following format:
 
-        [
-            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': -0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-                      'width': 300, 'height': 200, 'fov': 100, 'id': 'Left'},
-
-            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': 0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-                      'width': 300, 'height': 200, 'fov': 100, 'id': 'Right'},
-
-            {'type': 'sensor.lidar.ray_cast', 'x': 0.7, 'y': 0.0, 'z': 1.60, 'yaw': 0.0, 'pitch': 0.0, 'roll': 0.0,
-             'id': 'LIDAR'}
-        ]
-
-        sensors = [
-            {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 0.0,
-             'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_central'},
-
-            #{'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': -30.0,
-            # 'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_left'},
-
-            #{'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 30.0,
-            # 'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_right'},
-
-            {'type': 'sensor.other.gnss', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'id': 'GPS'},
-
-            {'type': 'sensor.speedometer', 'reading_frequency': 20, 'id': 'SPEED'},
-
-            {'type': 'sensor.can_bus', 'reading_frequency': 20, 'id': 'can_bus'}
-        ]
-
         """
 
         sensors = [
             {'type': 'sensor.camera.rgb', 'x': -1.5, 'y': 0.0, 'z': 2.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-             'width': 600, 'height': 170, 'fov': 100, 'id': 'rgb_central'},
+             'width': 900, 'height': 256, 'fov': 100, 'id': 'rgb_central'},
 
-            # {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': -30.0,
-            # 'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_left'},
-
-            # {'type': 'sensor.camera.rgb', 'x': 2.0, 'y': 0.0, 'z': 1.40, 'roll': 0.0, 'pitch': -15.0, 'yaw': 30.0,
-            # 'width': 400, 'height': 300, 'fov': 100, 'id': 'rgb_right'},
+            {'type': 'sensor.camera.rgb', 'x': 0.0, 'y': 0.0, 'z': 7.0, 'roll': 0.0, 'pitch': -90.0, 'yaw': 0.0,
+             'width': 450, 'height': 450, 'fov': 150, 'id': 'rgb_ontop'},
 
             {'type': 'sensor.other.gnss', 'id': 'GPS'},
 
@@ -182,10 +151,7 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
                      for i in range(len(inputs_data))]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights = self._model.forward_eval(norm_rgb, direction, norm_speed)
-        if not g_conf.LOSS == 'nll_loss':
-            last_action_outputs = actions_outputs[:, -len(g_conf.TARGETS):]
-        else:
-            last_action_outputs = actions_outputs[:, -1, :len(g_conf.TARGETS)]
+        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):]
         steer, throttle, brake = self.process_control_outputs(last_action_outputs.detach().cpu().numpy().squeeze(0))
         control.steer = float(steer)
         control.throttle = float(throttle)
@@ -193,24 +159,69 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
         control.hand_brake = False
 
         if self.attention_save_path:
+            if not os.path.exists(self.attention_save_path):
+                os.makedirs(self.attention_save_path)
             last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
                                            g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
             last_input = last_input.transpose(1, 2, 0) * 255
             last_input = last_input.astype(np.uint8)
             last_input = Image.fromarray(last_input)
-            self.saving_backbone_attention_maps(last_input, att_backbone_layers,
-                                                inputs_data =inputs_data, action=[steer, throttle, brake],
-                                                speed=inputs_data[-1]['SPEED'][1]['speed'])
-            #inputs = []
-            #for rgb_img in norm_rgb:
-            #    input = inverse_normalize(rgb_img, g_conf.IMG_NORMALIZATION['mean'],
-            #                               g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
-            #    inputs.append(input)
-            #cat_inputs = np.concatenate(inputs, 2)
-            #cat_inputs = cat_inputs.transpose(1, 2, 0) * 255
-            #cat_inputs = cat_inputs.astype(np.uint8)
-            #cat_inputs = Image.fromarray(cat_inputs)
-            #self.saving_TxEncoder_attention_maps(cat_inputs, attn_weights)  # attn_weights(B, S+1, T+1)
+
+            att = np.delete(self.cmap_2(np.abs(att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
+                att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
+            att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
+                (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
+            last_att = Image.fromarray(att)
+            blend_im = Image.blend(last_input, last_att, 0.7)
+            last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
+
+            cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
+            if float(cmd) == 1.0:
+                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_left.png'))
+
+            elif float(cmd) == 2.0:
+                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_right.png'))
+
+            elif float(cmd) == 3.0:
+                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'go_straight.png'))
+
+            elif float(cmd) == 4.0:
+                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'follow_lane.png'))
+
+            else:
+                raise RuntimeError()
+
+            """
+            elif float(cmd) == 5.0:
+                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_left.png'))
+
+            elif float(cmd) == 6.0:
+                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_right.png'))
+            """
+
+            command_sign = command_sign.resize((130, 40))
+
+            mat = Image.new('RGB', (
+                last_input_ontop.width + last_input.width, max(last_input_ontop.height, last_input.height * 2)),
+                            (0, 0, 0))
+            mat.paste(command_sign, (last_input_ontop.width + 230, last_input.height * 2 + 20))
+
+            mat.paste(last_input_ontop, (0, 0))
+            mat.paste(last_input, (last_input_ontop.width, 0))
+            mat.paste(blend_im, (last_input_ontop.width, last_input.height))
+
+            draw_mat = ImageDraw.Draw(mat)
+            font = ImageFont.truetype(os.path.join(os.getcwd(), 'signs', 'arial.ttf'), 20)
+            draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - 30),
+                          str("Steer " + "%.3f" % steer), fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 180, last_input_ontop.height - 30),
+                          str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - 30),
+                          str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
+                              str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
+
+            mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
             self.att_count += 1
 
         return control
@@ -269,7 +280,7 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
         wallclock_diff = (wallclock - self.wallclock_t0).total_seconds()
 
         #if int(wallclock_diff / 60) % 10 == 0:
-        print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
+        #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
 
         if len(self.inputs_buffer.queue) <= ((g_conf.ENCODER_INPUT_FRAMES_NUM-1) * g_conf.ENCODER_STEP_INTERVAL):
             print('=== The agent is stopping and waitting for the input buffer ...')
@@ -333,7 +344,10 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
             self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
-        return encode_directions(cmd.value), cmd.value
+        if g_conf.DATA_COMMAND_CLASS_NUM == 4:
+            return encode_directions_4(cmd.value), cmd.value
+        elif g_conf.DATA_COMMAND_CLASS_NUM == 6:
+            return encode_directions_6(cmd.value), cmd.value
 
     def saving_backbone_attention_maps(self, last_input, att_backbone_layers, inputs_data=None, action=None, speed=None):
         if not os.path.exists(self.attention_save_path+'_backbone_attn'):
