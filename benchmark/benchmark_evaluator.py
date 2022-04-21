@@ -30,13 +30,13 @@ from srunner.scenariomanager.carla_data_provider import *
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
-from leaderboard.scenarios.scenario_manager import ScenarioManager
-from leaderboard.scenarios.route_scenario import RouteScenario
-from leaderboard.envs.sensor_interface import SensorConfigurationInvalid
-from leaderboard.autoagents.agent_wrapper import  AgentWrapper, AgentError
-from leaderboard.utils.statistics_manager import StatisticsManager
-from leaderboard.utils.route_indexer import RouteIndexer
-from leaderboard.utils.server_manager import ServerManagerDocker, find_free_port
+from benchmark.scenarios.scenario_manager import ScenarioManager
+from benchmark.scenarios.route_scenario import RouteScenario
+from benchmark.envs.sensor_interface import SensorConfigurationInvalid
+from benchmark.autoagents.agent_wrapper import  AgentWrapper, AgentError
+from benchmark.utils.statistics_manager import StatisticsManager
+from benchmark.utils.route_indexer import RouteIndexer
+from benchmark.utils.server_manager import ServerManagerDocker, find_free_port
 
 sensors_to_icons = {
     'sensor.camera.rgb':        'carla_camera',
@@ -50,7 +50,7 @@ sensors_to_icons = {
 }
 
 
-class LeaderboardEvaluator(object):
+class BenchmarkEvaluator(object):
 
     """
     TODO: document me!
@@ -92,9 +92,8 @@ class LeaderboardEvaluator(object):
         self.traffic_manager = self.client.get_trafficmanager(int(args.trafficManagerPort))
 
         dist = pkg_resources.get_distribution("carla")
-        if dist.version != 'leaderboard':
-            if LooseVersion(dist.version) < LooseVersion('0.9.10'):
-                raise ImportError("CARLA version 0.9.10.1 or newer required. CARLA version found: {}".format(dist))
+        if LooseVersion(dist.version) < LooseVersion('0.9.13'):
+            raise ImportError("CARLA version 0.9.13.1 or newer required. CARLA version found: {}".format(dist))
 
         # Load agent
         module_name = os.path.basename(args.agent).split('.')[0]
@@ -172,48 +171,13 @@ class LeaderboardEvaluator(object):
         if hasattr(self, 'statistics_manager') and self.statistics_manager:
             self.statistics_manager.scenario = None
 
-    def _prepare_ego_vehicles(self, ego_vehicles, wait_for_ego_vehicles=False):
-        """
-        Spawn or update the ego vehicles
-        """
-
-        if not wait_for_ego_vehicles:
-            for vehicle in ego_vehicles:
-                self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
-                                                                             vehicle.transform,
-                                                                             vehicle.rolename,
-                                                                             color=vehicle.color,
-                                                                             vehicle_category=vehicle.category))
-
-        else:
-            ego_vehicle_missing = True
-            while ego_vehicle_missing:
-                self.ego_vehicles = []
-                ego_vehicle_missing = False
-                for ego_vehicle in ego_vehicles:
-                    ego_vehicle_found = False
-                    carla_vehicles = CarlaDataProvider.get_world().get_actors().filter('vehicle.*')
-                    for carla_vehicle in carla_vehicles:
-                        if carla_vehicle.attributes['role_name'] == ego_vehicle.rolename:
-                            ego_vehicle_found = True
-                            self.ego_vehicles.append(carla_vehicle)
-                            break
-                    if not ego_vehicle_found:
-                        ego_vehicle_missing = True
-                        break
-
-            for i, _ in enumerate(self.ego_vehicles):
-                self.ego_vehicles[i].set_transform(ego_vehicles[i].transform)
-
-        # sync state
-        CarlaDataProvider.get_world().tick()
-
     def _load_and_wait_for_world(self, args, config):
         """
         Load a new CARLA world and provide data to CarlaDataProvider
         """
 
         town = config.town
+        print('  port:', args.port)
         self.world = self.client.load_world(town)
         self.world.set_weather(config.weather)
         settings = self.world.get_settings()
@@ -225,9 +189,10 @@ class LeaderboardEvaluator(object):
         print('Set seed for pedestrians:', str(int(args.PedestriansSeed)))
 
         self.world.reset_all_traffic_lights()
-        if 'background_activity' in list(config.scenarios.keys()):
-            if 'cross_factor' in list(config.scenarios['background_activity'].keys()):
-                self.world.set_pedestrians_cross_factor(config.scenarios['background_activity']['cross_factor'])
+        if hasattr(config, 'scenarios'):
+            if 'background_activity' in list(config.scenarios.keys()):
+                if 'cross_factor' in list(config.scenarios['background_activity'].keys()):
+                    self.world.set_pedestrians_cross_factor(config.scenarios['background_activity']['cross_factor'])
 
         CarlaDataProvider.set_client(self.client)
         CarlaDataProvider.set_world(self.world)
@@ -343,7 +308,6 @@ class LeaderboardEvaluator(object):
         try:
             self._load_and_wait_for_world(args, config)
             self.agent_instance.set_world(self.world)
-            #self._prepare_ego_vehicles(config.ego_vehicles, False)
             scenario = RouteScenario(world=self.world, config=config, debug_mode=args.debug)
             self.statistics_manager.set_scenario(scenario.scenario)
 
@@ -457,7 +421,7 @@ class LeaderboardEvaluator(object):
 
 
 def main():
-    description = "CARLA AD Leaderboard Evaluation: evaluate your Agent in CARLA scenarios\n"
+    description = "CARLA AD Benchmark Evaluation: evaluate your Agent in CARLA scenarios\n"
 
     # general parameters
     parser = argparse.ArgumentParser(description=description, formatter_class=RawTextHelpFormatter)
@@ -532,13 +496,13 @@ def main():
         ServerDocker = ServerManagerDocker(docker_params)
 
     try:
-        leaderboard_evaluator = LeaderboardEvaluator(arguments, statistics_manager, ServerDocker)
-        leaderboard_evaluator.run(arguments)
+        benchmark_evaluator = BenchmarkEvaluator(arguments, statistics_manager, ServerDocker)
+        benchmark_evaluator.run(arguments)
     except Exception as e:
         traceback.print_exc()
         sys.exit(-1)
     finally:
-        del leaderboard_evaluator
+        del benchmark_evaluator
 
 if __name__ == '__main__':
     main()

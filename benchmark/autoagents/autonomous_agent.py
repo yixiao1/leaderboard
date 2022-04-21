@@ -14,9 +14,9 @@ from enum import Enum
 import carla
 from srunner.scenariomanager.timer import GameTime
 
-from leaderboard.utils.route_manipulation import downsample_route
-from leaderboard.envs.sensor_interface import SensorInterface
-from leaderboard.envs.data_writer import Writer
+from benchmark.utils.route_manipulation import downsample_route
+from benchmark.envs.sensor_interface import SensorInterface
+from benchmark.envs.data_writer import Writer
 
 
 class Track(Enum):

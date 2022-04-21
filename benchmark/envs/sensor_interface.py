@@ -13,7 +13,7 @@ import carla
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
 
-from leaderboard.utils.waypointer import Waypointer
+from benchmark.utils.waypointer import Waypointer
 
 def threaded(fn):
     def wrapper(*args, **kwargs):

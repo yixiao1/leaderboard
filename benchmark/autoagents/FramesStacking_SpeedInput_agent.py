@@ -22,15 +22,15 @@ import torchvision.transforms.functional as TF
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 
-from leaderboard.utils.route_manipulation import downsample_route
-from leaderboard.envs.sensor_interface import SensorInterface
+from benchmark.utils.route_manipulation import downsample_route
+from benchmark.envs.sensor_interface import SensorInterface
 
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
 from dataloaders.transforms import encode_directions_4, encode_directions_6, inverse_normalize
-from leaderboard.utils.waypointer import Waypointer
-from leaderboard.envs.data_writer import Writer
+from benchmark.utils.waypointer import Waypointer
+from benchmark.envs.data_writer import Writer
 
 
 def checkpoint_parse_configuration_file(filename):
@@ -155,7 +155,7 @@ class FramesStacking_SpeedInput_agent(object):
         direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0) for i in range(len(inputs_data))]
         
         actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, direction, norm_speed)
-        steer, throttle, brake = self.process_control_outputs(actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
+        steer, throttle, brake = self.process_control_outputs(actions_outputs[:, -1, :].detach().cpu().numpy().squeeze(0))
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)

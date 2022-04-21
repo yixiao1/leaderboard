@@ -20,6 +20,7 @@ import os
 import matplotlib.pyplot as plt
 
 import carla
+import time
 
 from agents.navigation.local_planner import RoadOption
 
@@ -52,8 +53,8 @@ from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTe
                                                                      RunningStopTest,
                                                                      ActorSpeedAboveThresholdTest)
 
-from leaderboard.utils.route_parser import RouteParser, TRIGGER_THRESHOLD, TRIGGER_ANGLE_THRESHOLD
-from leaderboard.utils.route_manipulation import interpolate_trajectory
+from benchmark.utils.route_parser import RouteParser, TRIGGER_THRESHOLD, TRIGGER_ANGLE_THRESHOLD
+from benchmark.utils.route_manipulation import interpolate_trajectory
 from tools.utils import draw_map, draw_point_data
 
 ROUTESCENARIO = ["RouteScenario"]
@@ -310,7 +311,7 @@ class RouteScenario(BasicScenario):
         elevate_transform = self.route[0][0]
         elevate_transform.location.z += 0.5
 
-        ego_vehicle = CarlaDataProvider.request_new_actor('vehicle.lincoln.mkz2017',
+        ego_vehicle = CarlaDataProvider.request_new_actor('vehicle.lincoln.mkz_2017',
                                                           elevate_transform,
                                                           rolename='hero')
 

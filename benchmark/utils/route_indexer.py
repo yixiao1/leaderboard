@@ -6,8 +6,8 @@ import copy
 from srunner.scenarioconfigs.route_scenario_configuration import RouteScenarioConfiguration
 
 
-from leaderboard.utils.route_parser import RouteParser
-from leaderboard.utils.checkpoint_tools import fetch_dict, create_default_json_msg, save_dict
+from benchmark.utils.route_parser import RouteParser
+from benchmark.utils.checkpoint_tools import fetch_dict, create_default_json_msg, save_dict
 
 
 class RouteIndexer():

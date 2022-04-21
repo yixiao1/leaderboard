@@ -92,7 +92,7 @@ class ServerManagerDocker(ServerManager):
 
         logging.debug(" Starting a docker server of id %s at port %d" % (self._docker_id, port))
 
-        time.sleep(20)
+        time.sleep(10)
 
     def stop(self):
         logging.debug("Killed a docker of id %s " % self._docker_id)
