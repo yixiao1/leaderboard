@@ -22,15 +22,15 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 
-from leaderboard.utils.route_manipulation import downsample_route
-from leaderboard.envs.sensor_interface import SensorInterface
+from benchmark.utils.route_manipulation import downsample_route
+from benchmark.envs.sensor_interface import SensorInterface
 
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
 from dataloaders.transforms import encode_directions, inverse_normalize
-from leaderboard.utils.waypointer import Waypointer
-from leaderboard.envs.data_writer import Writer
+from benchmark.utils.waypointer import Waypointer
+from benchmark.envs.data_writer import Writer
 
 def checkpoint_parse_configuration_file(filename):
 
