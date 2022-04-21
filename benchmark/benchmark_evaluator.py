@@ -183,6 +183,7 @@ class BenchmarkEvaluator(object):
         settings = self.world.get_settings()
         settings.fixed_delta_seconds = 1.0 / self.frame_rate
         settings.synchronous_mode = True
+        settings.no_rendering_mode = True
         self.world.apply_settings(settings)
 
         self.world.set_pedestrians_seed(int(args.PedestriansSeed))
