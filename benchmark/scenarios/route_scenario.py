@@ -30,19 +30,13 @@ from srunner.scenarioconfigs.scenario_configuration import ScenarioConfiguration
 from srunner.scenariomanager.scenarioatomics.atomic_behaviors import Idle, ScenarioTriggerer
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenarios.basic_scenario import BasicScenario
-from srunner.scenarios.control_loss import ControlLoss
-from srunner.scenarios.follow_leading_vehicle import FollowLeadingVehicle
-from srunner.scenarios.object_crash_vehicle import DynamicObjectCrossing
-from srunner.scenarios.object_crash_intersection import VehicleTurningRoute
-from srunner.scenarios.other_leading_vehicle import OtherLeadingVehicle
-from srunner.scenarios.maneuver_opposite_direction import ManeuverOppositeDirection
-from srunner.scenarios.junction_crossing_route import SignalJunctionCrossingRoute, NoSignalJunctionCrossingRoute
 
 from srunner.scenarios.control_loss_YiXiao import ControlLoss
 from srunner.scenarios.follow_leading_vehicle_YiXiao import FollowLeadingVehicleWithObstacle
 from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
 from srunner.scenarios.object_crash_intersection_YiXiao import VehicleTurningRoute
-from srunner.scenarios.junction_crossing_route_YiXiao import SignalJunctionLeadingVehicleCrossingTrafficLight, SignalJunctionGreenTrafficLightObstacleCrossing
+from srunner.scenarios.selfDefined_scenarios_YiXiao import (SignalJunctionLeadingVehicleCrossingTrafficLight,
+                                                            SignalJunctionGreenTrafficLightObstacleCrossing)
 
 
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTest,
@@ -61,19 +55,6 @@ ROUTESCENARIO = ["RouteScenario"]
 
 SECONDS_GIVEN_PER_METERS = 0.8
 INITIAL_SECONDS_DELAY = 5.0
-
-NUMBER_CLASS_TRANSLATION = {
-    "Scenario1": ControlLoss,
-    "Scenario2": FollowLeadingVehicleWithObstacle, #FollowLeadingVehicle,
-    "Scenario3": DynamicObjectCrossing,
-    "Scenario4": VehicleTurningRoute,
-    "Scenario5": OtherLeadingVehicle,
-    "Scenario6": ManeuverOppositeDirection,
-    "Scenario7": SignalJunctionCrossingRoute,
-    "Scenario8": SignalJunctionCrossingRoute,
-    "Scenario9": SignalJunctionCrossingRoute,
-    "Scenario10": NoSignalJunctionCrossingRoute
-}
 
 SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
     "Scenario1": ControlLoss,
@@ -539,6 +520,7 @@ class RouteScenario(BasicScenario):
             scenario_configuration.ego_vehicles = [ActorConfigurationData('vehicle.lincoln.mkz2017',
                                                                           ego_vehicle.get_transform(),
                                                                           'hero')]
+            scenario_configuration.route = self.route
             route_var_name = "ScenarioRouteNumber{}".format(scenario_number)
             scenario_configuration.route_var_name = route_var_name
             try:
@@ -687,7 +669,7 @@ class RouteScenario(BasicScenario):
         criteria = []
         route = convert_transform_to_location(self.route)
 
-        collision_criterion = CollisionTest(self.ego_vehicles[0], terminate_on_failure=False)
+        collision_criterion = CollisionTest(self.ego_vehicles[0], terminate_on_failure=True)
 
         route_criterion = InRouteTest(self.ego_vehicles[0],
                                       route=route,
@@ -696,7 +678,7 @@ class RouteScenario(BasicScenario):
                                       
         completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
+        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=True)
 
         red_light_criterion = RunningRedLightTest(self.ego_vehicles[0], terminate_on_failure=False)
 
