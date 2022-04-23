@@ -35,8 +35,8 @@ from srunner.scenarios.control_loss_YiXiao import ControlLoss
 from srunner.scenarios.follow_leading_vehicle_YiXiao import FollowLeadingVehicleWithObstacle
 from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
 from srunner.scenarios.object_crash_intersection_YiXiao import VehicleTurningRoute
-from srunner.scenarios.selfDefined_scenarios_YiXiao import (SignalJunctionLeadingVehicleCrossingTrafficLight,
-                                                            SignalJunctionGreenTrafficLightObstacleCrossing)
+from srunner.scenarios.selfDefined_scenarios_YiXiao import (SignalJunctionLeadingVehicleCrossingRedTrafficLight,
+                                                            SignalJunctionObstacleCrossingGreenTrafficLight)
 
 
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTest,
@@ -61,8 +61,8 @@ SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
     "Scenario2": FollowLeadingVehicleWithObstacle,
     "Scenario3": DynamicObjectCrossing,
     "Scenario4": VehicleTurningRoute,
-    "Scenario5": SignalJunctionLeadingVehicleCrossingTrafficLight,
-    "Scenario6": SignalJunctionGreenTrafficLightObstacleCrossing
+    "Scenario5": SignalJunctionLeadingVehicleCrossingRedTrafficLight,
+    "Scenario6": SignalJunctionObstacleCrossingGreenTrafficLight
 }
 
 
@@ -245,7 +245,8 @@ class RouteScenario(BasicScenario):
         if debug_mode:
             self._draw_waypoints(world, self.route, vertical_shift=1.0, persistency=50000.0)
 
-        if True:
+        # Just draw once, baseline model
+        if config.agent._model.name == 'FramesStacking_SpeedLossInput':
             save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name)
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
