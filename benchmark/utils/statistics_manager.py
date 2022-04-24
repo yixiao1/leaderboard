@@ -199,6 +199,9 @@ class StatisticsManager(object):
                     route_record.values['closest_distance_to_front_object'] = round(node._closest_distance, 4) if node._closest_distance != float("inf") else round(0.0, 4)
                     route_record.values['safe_distance_threshold'] = round(node._threshold_distance, 4)
 
+                if hasattr(node, 'average_velocity'):
+                    route_record.values['average_velocity'] = round(node.average_velocity, 4)
+
         # update route scores
         route_record.scores['score_route'] = score_route
         route_record.scores['score_penalty'] = score_penalty
@@ -219,6 +222,7 @@ class StatisticsManager(object):
         global_record.scores['success_rate'] = 0
         global_record.scores['score_safe_distance'] = 0
         global_record.values['closest_distance_to_front_object']=0.0
+        global_record.values['average_velocity'] = 0.0
         global_record.route_id = -1
         global_record.index = -1
         global_record.status = 'Completed'
@@ -230,10 +234,13 @@ class StatisticsManager(object):
                 global_record.scores['score_penalty'] += route_record.scores['score_penalty']
                 global_record.scores['score_composed'] += route_record.scores['score_composed']
                 global_record.scores['success_rate'] += int(route_record.scores['score_route'] == 100.0)
-                if 'closest_distance_to_front_object' in route_record.values.keys():
-                    global_record.scores['score_safe_distance'] += \
-                        int(route_record.values['closest_distance_to_front_object'] >= route_record.values['safe_distance_threshold'])
-                    global_record.values['closest_distance_to_front_object'] +=route_record.values['closest_distance_to_front_object']
+                for key in route_record.values.keys():
+                    if key == 'closest_distance_to_front_object':
+                        global_record.scores['score_safe_distance'] += \
+                            int(route_record.values['closest_distance_to_front_object'] >= route_record.values['safe_distance_threshold'])
+                        global_record.values['closest_distance_to_front_object'] +=route_record.values['closest_distance_to_front_object']
+                    elif key == 'average_velocity':
+                        global_record.values['average_velocity'] += route_record.values['average_velocity']
 
                 for key in global_record.infractions.keys():
                     route_length_kms = max(route_record.scores['score_route'] / 100 * route_record.meta['route_length'] / 1000.0, 0.001)
@@ -298,6 +305,7 @@ class StatisticsManager(object):
         data['values'] = ['{:.3f}'.format(stats_dict['scores']['success_rate']),
                           '{:.3f}'.format(stats_dict['scores']['score_safe_distance']),
                           '{:.3f}'.format(stats_dict['values']['closest_distance_to_front_object']),
+                          '{:.3f}'.format(stats_dict['values']['average_velocity']),
                           '{:.3f}'.format(stats_dict['scores']['score_composed']),
                           '{:.3f}'.format(stats_dict['scores']['score_route']),
                           '{:.3f}'.format(stats_dict['scores']['score_penalty']),
@@ -316,6 +324,7 @@ class StatisticsManager(object):
         data['labels'] = ['Success rate',
                           'Avg. safe distance score',
                           'Avg. closest distance to front object',
+                          'Avg. driving velocity',
                           'Avg. driving score',
                           'Avg. route completion',
                           'Avg. infraction penalty',
