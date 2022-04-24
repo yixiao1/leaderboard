@@ -236,14 +236,11 @@ class StatisticsManager(object):
                     global_record.values['closest_distance_to_front_object'] +=route_record.values['closest_distance_to_front_object']
 
                 for key in global_record.infractions.keys():
-                    if key == 'close_to_object':
-                        pass
+                    route_length_kms = max(route_record.scores['score_route'] / 100 * route_record.meta['route_length'] / 1000.0, 0.001)
+                    if isinstance(global_record.infractions[key], list):
+                        global_record.infractions[key] = len(route_record.infractions[key]) / route_length_kms
                     else:
-                        route_length_kms = max(route_record.scores['score_route'] / 100 * route_record.meta['route_length'] / 1000.0, 0.001)
-                        if isinstance(global_record.infractions[key], list):
-                            global_record.infractions[key] = len(route_record.infractions[key]) / route_length_kms
-                        else:
-                            global_record.infractions[key] += len(route_record.infractions[key]) / route_length_kms
+                        global_record.infractions[key] += len(route_record.infractions[key]) / route_length_kms
 
                 if route_record.status is not 'Completed':
                     global_record.status = 'Failed'
