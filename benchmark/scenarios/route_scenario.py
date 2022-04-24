@@ -302,54 +302,8 @@ class RouteScenario(BasicScenario):
         spectator.set_transform(carla.Transform(ego_trans.location + carla.Location(z=50),
                                                     carla.Rotation(pitch=-90)))
 
-        # we change the Vehicle Physics Control the same as the setting in CARLA 0.9.10
+        # we change the Vehicle Physics Control in CARLA 0.9.13 the same as the setting in CARLA 0.9.10
         vehicle_physics = ego_vehicle.get_physics_control()
-
-        """
-
-        print( '================================= Before ================================== ')
-        print("\n torque_curve", [[val.x, val.y] for val in vehicle_physics.torque_curve], \
-              "\n max_rpm", vehicle_physics.max_rpm, \
-              "\n moi", vehicle_physics.moi, \
-              "\n damping_rate_full_throttle", vehicle_physics.damping_rate_full_throttle, \
-              "\n damping_rate_zero_throttle_clutch_engaged", vehicle_physics.damping_rate_zero_throttle_clutch_engaged, \
-              "\n damping_rate_zero_throttle_clutch_disengaged",
-              vehicle_physics.damping_rate_zero_throttle_clutch_disengaged, \
-              "\n use_gear_autobox", vehicle_physics.use_gear_autobox, \
-              "\n gear_switch_time", vehicle_physics.gear_switch_time, \
-              "\n clutch_strength", vehicle_physics.clutch_strength, \
-              "\n final_ratio", vehicle_physics.final_ratio)
-
-        for i, gear in enumerate(vehicle_physics.forward_gears):
-            print("gear number", i, '\n', "gear.ratio", gear.ratio, 'gear.down_ratio', gear.down_ratio, "gear.up_ratio",
-                  gear.up_ratio)
-
-        print("\n mass", vehicle_physics.mass, \
-              "\n drag_coefficient", vehicle_physics.drag_coefficient, \
-              "\n center_of_mass", vehicle_physics.center_of_mass)
-        print("\n steering_curve", [[val.x, val.y] for val in vehicle_physics.steering_curve], \
-              # "\n use_sweep_wheel_collision", vehicle_physics.use_sweep_wheel_collision)
-              "\n use_sweep_wheel_collision", 'NoImplement')
-
-        for wheel, ids in zip(vehicle_physics.wheels, ['front left', 'front right', 'back left', 'back right']):
-            print('\n \n', ids, \
-                  '\n tire_friction', wheel.tire_friction, \
-                  '\n damping_rate', wheel.damping_rate, \
-                  '\n max_steer_angle', wheel.max_steer_angle, \
-                  '\n radius', wheel.radius, \
-                  '\n max_brake_torque', wheel.max_brake_torque, \
-                  '\n max_handbrake_torque', wheel.max_handbrake_torque, \
-                  '\n position', wheel.position, \
-                  # '\n long_stiff_value', wheel.long_stiff_value, \
-                  '\n long_stiff_value', 'NoImplement', \
-                  # '\n lat_stiff_max_load', wheel.lat_stiff_max_load, \
-                  '\n lat_stiff_max_load', 'NoImplement', \
-                  # '\n lat_stiff_value', wheel.lat_stiff_value)
-                  '\n lat_stiff_value', 'NoImplement')
-
-        print("\n ===================================================")
-        
-        """
 
         vehicle_physics.torque_curve = [carla.Vector2D(x=0, y=400),
                                         carla.Vector2D(x=1890, y=500),
@@ -374,15 +328,15 @@ class RouteScenario(BasicScenario):
 
         vehicle_physics.wheels = [front_left_wheel, front_right_wheel, rear_left_wheel, rear_right_wheel]
 
-        time.sleep(3)
+        time.sleep(2)
         ego_vehicle.apply_physics_control(vehicle_physics)
-        time.sleep(3)
+        time.sleep(2)
 
         vehicle_physics_new = ego_vehicle.get_physics_control()
 
         print('===================== After modification =====================')
-        print("\n mass", vehicle_physics_new.mass, 'shoud be 2404')
-        print("\n damping_rate_full_throttle", vehicle_physics.damping_rate_full_throttle, 'shoud be 0.15')
+        print("\n mass", vehicle_physics_new.mass, '(shoud be 2404)')
+        print("\n damping_rate_full_throttle", vehicle_physics.damping_rate_full_throttle, '(shoud be 0.15)')
         print('\n ===============================================')
 
         return ego_vehicle
@@ -698,6 +652,13 @@ class RouteScenario(BasicScenario):
         criteria.append(stop_criterion)
         criteria.append(route_criterion)
         criteria.append(blocked_criterion)
+
+        # we add additional criterias that is defined in specific scenario class
+        for i, scenario in enumerate(self.list_scenarios):
+            scenario_criteria_list = scenario._create_test_criteria()
+            if scenario_criteria_list:
+                for scenario_criteria in scenario_criteria_list:
+                    criteria.append(scenario_criteria)
 
         return criteria
 
