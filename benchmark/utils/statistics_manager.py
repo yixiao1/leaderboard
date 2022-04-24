@@ -49,7 +49,8 @@ class RouteRecord():
         self.scores = {
             'score_route': 0,
             'score_penalty': 0,
-            'score_composed': 0
+            'score_composed': 0,
+            'obstacle_triggered': 0
         }
 
         self.meta = {}
@@ -202,6 +203,10 @@ class StatisticsManager(object):
                 if hasattr(node, 'average_velocity'):
                     route_record.values['average_velocity'] = round(node.average_velocity, 4)
 
+                # Just in case sometimes the object was not triggered successfully
+                if hasattr(node, 'max_velocity'):
+                    route_record.scores['obstacle_triggered'] = int(node.max_velocity > 0.1)
+
         # update route scores
         route_record.scores['score_route'] = score_route
         route_record.scores['score_penalty'] = score_penalty
@@ -234,6 +239,7 @@ class StatisticsManager(object):
                 global_record.scores['score_penalty'] += route_record.scores['score_penalty']
                 global_record.scores['score_composed'] += route_record.scores['score_composed']
                 global_record.scores['success_rate'] += int(route_record.scores['score_route'] == 100.0)
+                global_record.scores['obstacle_triggered'] += route_record.scores['obstacle_triggered']
                 for key in route_record.values.keys():
                     if key == 'closest_distance_to_front_object':
                         global_record.scores['score_safe_distance'] += \
