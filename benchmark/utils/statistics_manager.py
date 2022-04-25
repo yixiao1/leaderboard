@@ -310,8 +310,10 @@ class StatisticsManager(object):
         data['_checkpoint']['global_record'] = stats_dict
         data['values'] = ['{:.3f}'.format(stats_dict['scores']['success_rate']),
                           '{:.3f}'.format(stats_dict['scores']['score_safe_distance']),
-                          '{:.3f}'.format(stats_dict['values']['closest_distance_to_front_object']),
+                          '{:.3f}'.format(stats_dict['values']['closest_distance_to_front_object']/stats_dict['scores']['obstacle_triggered']),
                           '{:.3f}'.format(stats_dict['values']['average_velocity']),
+                          '{:.3f}'.format(stats_dict['scores']['obstacle_triggered']),
+
                           '{:.3f}'.format(stats_dict['scores']['score_composed']),
                           '{:.3f}'.format(stats_dict['scores']['score_route']),
                           '{:.3f}'.format(stats_dict['scores']['score_penalty']),
@@ -330,7 +332,9 @@ class StatisticsManager(object):
         data['labels'] = ['Success rate',
                           'Avg. safe distance score',
                           'Avg. closest distance to front object',
-                          'Avg. driving velocity',
+                          'Avg. average driving velocity',
+                          'Scenario successfully triggered',
+
                           'Avg. driving score',
                           'Avg. route completion',
                           'Avg. infraction penalty',

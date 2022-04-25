@@ -28,7 +28,7 @@ from benchmark.envs.sensor_interface import SensorInterface
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions, inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize
 from benchmark.utils.waypointer import Waypointer
 from benchmark.envs.data_writer import Writer
 
@@ -46,7 +46,7 @@ def get_entry_point():
 class Track(Enum):
 
     """
-    This enum represents the different tracks of the CARLA AD leaderboard.
+    This enum represents the different tracks of the CARLA AD
     """
     SENSORS = 'SENSORS'
     MAP = 'MAP'
@@ -152,8 +152,8 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions = [torch.cuda.FloatTensor(inputs_data[i]['actions']).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights, _, _ = self._model.forward_eval(norm_rgb, direction, norm_speed, actions)
-        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0)
-        steer, throttle, brake = self.process_control_outputs(last_action_outputs)
+        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy()
+        steer, throttle, brake = self.process_control_outputs(last_action_outputs.squeeze(0))
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)
@@ -221,7 +221,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
                           str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
             draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
-
+            #mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
             self.att_count += 1
 
@@ -246,7 +246,10 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         Destroy (clean-up) the agent
         :return:
         """
-        pass
+        self._model = None
+        self.checkpoint = None
+        self.world = None
+        self.map = None
 
     def __call__(self):
         """
@@ -333,7 +336,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
-        return encode_directions(cmd.value), cmd.value
+        return encode_directions_4(cmd.value), cmd.value
 
     def saving_backbone_attention_maps(self, last_input, att_backbone_layers, inputs_data=None, action=None, speed=None):
         if not os.path.exists(self.attention_save_path+'_backbone_attn'):

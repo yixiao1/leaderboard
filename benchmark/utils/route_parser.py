@@ -69,6 +69,11 @@ class RouteParser(object):
             new_config.scenario_file = scenario_file
             new_config.package_name = route_filename.split('/')[-1].split('.')[-2]
 
+            trigger_list = []
+            for trigger in route.iter('trigger'):
+                trigger_list.append(trigger.attrib['id'])
+            new_config.triggers_list = trigger_list
+
             waypoint_list = []  # the list of waypoints that can be found on this route
             for waypoint in route.iter('waypoint'):
                 waypoint_list.append(carla.Location(x=float(waypoint.attrib['x']),
@@ -379,13 +384,16 @@ class RouteParser(object):
         for town_name in world_annotations.keys():
             if town_name != route_name:
                 continue
-
             scenarios = world_annotations[town_name]
             for scenario in scenarios:  # For each existent scenario
                 scenario_name = scenario["scenario_type"]
                 if not scenario_name in config.defined_available_senarios_list:
                     continue
                 for event in scenario["available_event_configurations"]:
+                    defined_id = event['id']
+                    # we consider only the trigger id that has been defined into the route xml file
+                    if not defined_id in config.triggers_list:
+                        continue
                     waypoint = event['transform']  # trigger point of this scenario
                     RouteParser.convert_waypoint_float(waypoint)
                     # We match trigger point to the  route, now we need to check if the route affects

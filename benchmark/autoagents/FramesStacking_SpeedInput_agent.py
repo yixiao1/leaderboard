@@ -227,8 +227,8 @@ class FramesStacking_SpeedInput_agent(object):
                           fill=(255, 255, 255), font=font)
             draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
+            #mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
-
             self.att_count += 1
 
         return control
