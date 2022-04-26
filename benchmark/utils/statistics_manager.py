@@ -41,7 +41,8 @@ class RouteRecord():
             'route_dev': [],
             'route_timeout': [],
             'vehicle_blocked': [],
-            'close_to_object': []
+            'close_to_object': [],
+            'obstacle_trigger_blocked': []
         }
         self.values = {
         }
@@ -50,7 +51,7 @@ class RouteRecord():
             'score_route': 0,
             'score_penalty': 0,
             'score_composed': 0,
-            'obstacle_triggered': 0
+            'obstacle_trigger': 0
         }
 
         self.meta = {}
@@ -196,16 +197,16 @@ class StatisticsManager(object):
                         elif event.get_type() == TrafficEventType.TOO_CLOSE_TO_FRONT_OBJECT:
                             route_record.infractions['close_to_object'] = [event.get_message()]
 
+                        elif event.get_type() == TrafficEventType.OBJECT_TRIGGER_BLOCKED:
+                            route_record.infractions['obstacle_trigger_blocked']= [event.get_message()]
+                            failure = "Obstacle trigger got blocked"
+
                 if hasattr(node, '_closest_distance'):
                     route_record.values['closest_distance_to_front_object'] = round(node._closest_distance, 4) if node._closest_distance != float("inf") else round(0.0, 4)
                     route_record.values['safe_distance_threshold'] = round(node._threshold_distance, 4)
 
                 if hasattr(node, 'average_velocity'):
                     route_record.values['average_velocity'] = round(node.average_velocity, 4)
-
-                # Just in case sometimes the object was not triggered successfully
-                if hasattr(node, 'max_velocity'):
-                    route_record.scores['obstacle_triggered'] = int(node.max_velocity > 0.1)
 
         # update route scores
         route_record.scores['score_route'] = score_route
@@ -239,7 +240,7 @@ class StatisticsManager(object):
                 global_record.scores['score_penalty'] += route_record.scores['score_penalty']
                 global_record.scores['score_composed'] += route_record.scores['score_composed']
                 global_record.scores['success_rate'] += int(route_record.scores['score_route'] == 100.0)
-                global_record.scores['obstacle_triggered'] += route_record.scores['obstacle_triggered']
+                global_record.scores['obstacle_trigger'] += int(route_record.infractions['obstacle_trigger_blocked'] == [])
                 for key in route_record.values.keys():
                     if key == 'closest_distance_to_front_object':
                         global_record.scores['score_safe_distance'] += \
@@ -310,10 +311,9 @@ class StatisticsManager(object):
         data['_checkpoint']['global_record'] = stats_dict
         data['values'] = ['{:.3f}'.format(stats_dict['scores']['success_rate']),
                           '{:.3f}'.format(stats_dict['scores']['score_safe_distance']),
-                          '{:.3f}'.format(stats_dict['values']['closest_distance_to_front_object']/stats_dict['scores']['obstacle_triggered']),
+                          '{:.3f}'.format(stats_dict['values']['closest_distance_to_front_object']),
                           '{:.3f}'.format(stats_dict['values']['average_velocity']),
-                          '{:.3f}'.format(stats_dict['scores']['obstacle_triggered']),
-
+                          '{:.3f}'.format(stats_dict['scores']['obstacle_trigger']),
                           '{:.3f}'.format(stats_dict['scores']['score_composed']),
                           '{:.3f}'.format(stats_dict['scores']['score_route']),
                           '{:.3f}'.format(stats_dict['scores']['score_penalty']),
@@ -333,8 +333,7 @@ class StatisticsManager(object):
                           'Avg. safe distance score',
                           'Avg. closest distance to front object',
                           'Avg. average driving velocity',
-                          'Scenario successfully triggered',
-
+                          'Obstacle Triggered',
                           'Avg. driving score',
                           'Avg. route completion',
                           'Avg. infraction penalty',
