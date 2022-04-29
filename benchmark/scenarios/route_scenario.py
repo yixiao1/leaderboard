@@ -34,8 +34,9 @@ from srunner.scenarios.basic_scenario import BasicScenario
 from srunner.scenarios.control_loss_YiXiao import ControlLoss
 from srunner.scenarios.follow_leading_vehicle_YiXiao import FollowLeadingVehicleWithObstacle
 from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
-from srunner.scenarios.object_crash_intersection_YiXiao import VehicleTurningRoute
-from srunner.scenarios.selfDefined_scenarios_YiXiao import (SignalJunctionLeadingVehicleCrossingRedTrafficLight,
+from srunner.scenarios.selfDefined_scenarios_YiXiao import (VehicleTurningRoute,
+                                                            SignalJunctionChaos,
+                                                            SignalJunctionLeadingVehicleCrossingRedTrafficLight,
                                                             SignalJunctionObstacleCrossingGreenTrafficLight)
 
 
@@ -59,10 +60,11 @@ INITIAL_SECONDS_DELAY = 5.0
 SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
     "Scenario1": ControlLoss,
     "Scenario2": FollowLeadingVehicleWithObstacle,
-    "Scenario3": DynamicObjectCrossing,
+    "Scenario3": SignalJunctionChaos,
     "Scenario4": VehicleTurningRoute,
     "Scenario5": SignalJunctionLeadingVehicleCrossingRedTrafficLight,
-    "Scenario6": SignalJunctionObstacleCrossingGreenTrafficLight
+    "Scenario6": SignalJunctionObstacleCrossingGreenTrafficLight,
+    'Scenario7': DynamicObjectCrossing,
 }
 
 
@@ -234,9 +236,8 @@ class RouteScenario(BasicScenario):
         # Sample the scenarios to be used for this route instance.
         self.sampled_scenarios_definitions = self._scenario_sampling(potential_scenarios_definitions)
 
-        print(' ')
-        print('sampled_scenarios_definitions')
-        print(self.sampled_scenarios_definitions)
+        if not self.sampled_scenarios_definitions:
+            raise RuntimeError('The scenario is not defined properly: No trigger point could be used in this route')
 
         # Timeout of scenario in seconds
         self.timeout = self._estimate_route_timeout()
