@@ -229,6 +229,23 @@ class FramesStacking_SpeedInput_agent(object):
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
             #mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
+
+            data = inputs_data[-1]['can_bus'][1]
+            speed_data = inputs_data[-1]['SPEED'][1]
+
+            ## TODO: HARDCODING
+            for key, value in speed_data.items():
+                if key in data.keys():  # If it exist, add it
+                    data[key].update(value)
+                else:
+                    data.update({key:value})
+            with open(os.path.join(self.attention_save_path, 'can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
+                jsonObj = {}
+                jsonObj.update(data)
+                fo.seek(0)
+                fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
+                fo.close()
+
             self.att_count += 1
 
         return control
