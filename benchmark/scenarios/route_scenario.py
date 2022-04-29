@@ -193,6 +193,7 @@ class RouteScenario(BasicScenario):
 
         ego_vehicle = self._update_ego_vehicle()
 
+        self.other_actors_dict ={}
         self.list_scenarios = self._build_scenario_instances(world,
                                                              ego_vehicle,
                                                              self.sampled_scenarios_definitions,
@@ -573,6 +574,7 @@ class RouteScenario(BasicScenario):
         # Add all the actors of the specific scenarios to self.other_actors
         for scenario in self.list_scenarios:
             self.other_actors.extend(scenario.other_actors)
+            self.other_actors_dict.update({scenario.name: scenario.other_actors_dict})
 
     def _create_behavior(self):
         """
