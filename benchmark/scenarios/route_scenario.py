@@ -191,18 +191,18 @@ class RouteScenario(BasicScenario):
 
         self._update_route(world, config, debug_mode>0)
 
-        ego_vehicle = self._update_ego_vehicle()
+        self._ego_vehicle = self._update_ego_vehicle()
 
         self.other_actors_dict ={}
         self.list_scenarios = self._build_scenario_instances(world,
-                                                             ego_vehicle,
+                                                             self._ego_vehicle,
                                                              self.sampled_scenarios_definitions,
                                                              scenarios_per_tick=10,
                                                              timeout=self.timeout,
                                                              debug_mode=debug_mode>1)
 
         super(RouteScenario, self).__init__(name=config.name,
-                                            ego_vehicles=[ego_vehicle],
+                                            ego_vehicles=[self._ego_vehicle],
                                             config=config,
                                             world=world,
                                             debug_mode=debug_mode>1,
@@ -222,7 +222,7 @@ class RouteScenario(BasicScenario):
         world_annotations = RouteParser.parse_annotations_file(config.scenario_file)
 
         # prepare route's trajectory (interpolate and add the GPS route)
-        gps_route, route = interpolate_trajectory(world, config.trajectory)
+        gps_route, route= interpolate_trajectory(world, config.trajectory)
 
         print(' ')
         print('route name', config.name)
@@ -634,11 +634,11 @@ class RouteScenario(BasicScenario):
         route_criterion = InRouteTest(self.ego_vehicles[0],
                                       route=route,
                                       offroad_max=30,
-                                      terminate_on_failure=True)
+                                      terminate_on_failure=False)
                                       
         completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=True)
+        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
         red_light_criterion = RunningRedLightTest(self.ego_vehicles[0], terminate_on_failure=False)
 

@@ -17,21 +17,22 @@ import torch
 from srunner.scenariomanager.timer import GameTime
 from queue import Queue
 import json
-import numpy as np
 import torchvision.transforms.functional as TF
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
+import copy
+from importlib import import_module
 
 from benchmark.utils.route_manipulation import downsample_route
 from benchmark.envs.sensor_interface import SensorInterface
 
-from configs import g_conf, merge_with_yaml, set_type_of_process
-from network.models_console import Models
-from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions_4, encode_directions_6, inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize
 from benchmark.utils.waypointer import Waypointer
 from benchmark.envs.data_writer import Writer
-
+from omegaconf import OmegaConf
+from network.models.architectures.Roach_rl_birdview.birdview.chauffeurnet import ObsManager
+import network.models.architectures.Roach_rl_birdview.utils.transforms as trans_utils
 
 def checkpoint_parse_configuration_file(filename):
 
@@ -42,7 +43,7 @@ def checkpoint_parse_configuration_file(filename):
            configuration_dict['agent_name']
 
 def get_entry_point():
-    return 'FramesStacking_SpeedInput_agent'
+    return 'Roach_rl_birdview_agent'
 
 class Track(Enum):
 
@@ -52,7 +53,13 @@ class Track(Enum):
     SENSORS = 'SENSORS'
     MAP = 'MAP'
 
-class FramesStacking_SpeedInput_agent(object):
+def load_entry_point(name):
+    mod_name, attr_name = name.split(":")
+    mod = import_module(mod_name)
+    fn = getattr(mod, attr_name)
+    return fn
+
+class Roach_rl_birdview_agent(object):
 
     """
     Autonomous agent base class. All user agents have to be derived from this class
@@ -66,13 +73,12 @@ class FramesStacking_SpeedInput_agent(object):
 
         # this data structure will contain all sensor data
         self.sensor_interface = SensorInterface()
-        self.inputs_buffer = Queue()
+        self.inputs_buffer=Queue()
         self.waypointer = None
         self.attention_save_path = None
 
         # agent's initialization
         self.setup(path_to_conf_file)
-
         self.wallclock_t0 = None
 
         if save_sensor is not None:
@@ -80,42 +86,42 @@ class FramesStacking_SpeedInput_agent(object):
         else:
             self.writer = None
 
-        self.wallclock_t0 = None
-
         if save_attention:
+            self.cmap_2 = plt.get_cmap('jet')
             self.attention_save_path = save_attention
             self.att_count = 0
 
     def setup(self, path_to_conf_file):
-        """
-        Initialize everything needed by your agent and set the track attribute to the right type:
-            Track.SENSORS : CAMERAS, LIDAR, RADAR, GPS and IMU sensors are allowed
-            Track.MAP : OpenDRIVE map is also allowed
-        """
-
         exp_dir = os.path.join('/', os.path.join(*path_to_conf_file.split('/')[:-1]))
         yaml_conf, checkpoint_number, _ = checkpoint_parse_configuration_file(path_to_conf_file)
-        g_conf.immutable(False)
-        merge_with_yaml(os.path.join(exp_dir, yaml_conf), process_type='drive')
-        set_type_of_process('drive', root=os.environ["TRAINING_RESULTS_ROOT"])
+        cfg = OmegaConf.load(os.path.join(exp_dir, yaml_conf))
 
-        if g_conf.MODEL_TYPE in ['FramesStacking_SpeedLossInput']:
-            self._model = Models(g_conf.MODEL_TYPE, g_conf.MODEL_CONFIGURATION)
-            if torch.cuda.device_count() > 1 and g_conf.DATA_PARALLEL:
-                print("Using multiple GPUs parallel! ")
-                print(torch.cuda.device_count(), 'GPUs to be used: ', os.environ["CUDA_VISIBLE_DEVICES"])
-                self._model = DataParallelWrapper(self._model)
-            self.checkpoint = torch.load(os.path.join(exp_dir, 'checkpoints', self._model.name+'_'+str(checkpoint_number) + '.pth'))
-            print(self._model.name+'_'+str(checkpoint_number) + '.pth', "loaded from ", os.path.join(exp_dir, 'checkpoints'))
-            self._model.load_state_dict(self.checkpoint['model'])
-            self._model.cuda()
-            self._model.eval()
-        else:
-            raise RuntimeError('MODEL_TYPE not defined yet!')
+        self._ckpt = os.path.join(exp_dir, 'checkpoints', str(checkpoint_number) + '.pth')
+
+        cfg = OmegaConf.to_container(cfg)
+
+        self._obs_configs = cfg['obs_configs']
+        self._train_cfg = cfg['training']
+
+        # prepare policy
+        self._policy_class = load_entry_point(cfg['policy']['entry_point'])
+        self._policy_kwargs = cfg['policy']['kwargs']
+        print(f'Loading checkpoint: {self._ckpt}')
+        self._policy, self._train_cfg['kwargs'] = self._policy_class.load(self._ckpt)
+        self._policy = self._policy.eval()
+
+        self._wrapper_class = load_entry_point(cfg['env_wrapper']['entry_point'])
+        self._wrapper_kwargs = cfg['env_wrapper']['kwargs']
+
+        self._obs_managers= ObsManager(cfg['obs_configs']['birdview'])
 
     def set_world(self, world):
         self.world=world
         self.map=self.world.get_map()
+
+    def set_ego_vehicle(self, ego_vehicle):
+        self._ego_vehicle=ego_vehicle
+        self._obs_managers.attach_ego_vehicle(self._ego_vehicle, self._route_plan)
 
     def sensors(self):  # pylint: disable=no-self-use
         """
@@ -149,36 +155,30 @@ class FramesStacking_SpeedInput_agent(object):
         :return: control
         """
 
-        control = carla.VehicleControl()
-        norm_rgb = [self.process_image(inputs_data[i]['rgb_central'][1]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
-        norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0) for i in range(len(inputs_data))]
-        direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0) for i in range(len(inputs_data))]
-        
-        actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, direction, norm_speed)
-        steer, throttle, brake = self.process_control_outputs(actions_outputs[:, -1, :].detach().cpu().numpy().squeeze(0))
-        control.steer = float(steer)
-        control.throttle = float(throttle)
-        control.brake = float(brake)
-        control.hand_brake = False
+        input_data = copy.deepcopy(inputs_data)
+
+        policy_input = self._wrapper_class.process_obs(input_data[-1], self._wrapper_kwargs['input_states'], train=False)
+
+        actions, _, _, _, _, _ = self._policy.forward(
+            policy_input, deterministic=True, clip_action=True)
+        control = self._wrapper_class.process_act(actions, self._wrapper_kwargs['acc_as_action'], train=False)
+
+        steer = control.steer
+        throttle = control.throttle
+        brake = control.brake
 
         if self.attention_save_path:
             if not os.path.exists(self.attention_save_path):
                 os.makedirs(self.attention_save_path)
-
-            last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
-                                           g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
-            cmap_2 = plt.get_cmap('jet')
-
-            att = np.delete(cmap_2(np.abs(attention_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
-                attention_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
-            att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
-                (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
-            last_att = Image.fromarray(att)
-            last_input = last_input.transpose(1, 2, 0) * 255
-            last_input = last_input.astype(np.uint8)
+            last_input = input_data[-1]['rgb_central'][1]
             last_input = Image.fromarray(last_input)
-            blend_im = Image.blend(last_input, last_att, 0.7)
 
+            #att = np.delete(self.cmap_2(np.abs(att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
+            #    att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
+            #att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
+            #    (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
+            #last_att = Image.fromarray(att)
+            #blend_im = Image.blend(last_input, last_att, 0.7)
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
@@ -198,7 +198,6 @@ class FramesStacking_SpeedInput_agent(object):
                 raise RuntimeError()
 
             """
-
             elif float(cmd) == 5.0:
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_left.png'))
 
@@ -215,16 +214,16 @@ class FramesStacking_SpeedInput_agent(object):
 
             mat.paste(last_input_ontop, (0, 0))
             mat.paste(last_input, (last_input_ontop.width, 0))
-            mat.paste(blend_im, (last_input_ontop.width, last_input.height))
+            #mat.paste(blend_im, (last_input_ontop.width, last_input.height))
 
             draw_mat = ImageDraw.Draw(mat)
             font = ImageFont.truetype(os.path.join(os.getcwd(), 'signs', 'arial.ttf'), 20)
-            draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - 30), str("Steer " + "%.3f" % steer),
-                          fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - 30),
+                          str("Steer " + "%.3f" % steer), fill=(255, 255, 255), font=font)
             draw_mat.text((last_input_ontop.width + 180, last_input_ontop.height - 30),
                           str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - 30), str("Brake " + "%.3f" % brake),
-                          fill=(255, 255, 255), font=font)
+            draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - 30),
+                          str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
             draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
             mat = mat.resize((420, 180))
@@ -238,7 +237,8 @@ class FramesStacking_SpeedInput_agent(object):
                 if key in data.keys():  # If it exist, add it
                     data[key].update(value)
                 else:
-                    data.update({key:value})
+                    data.update({key: value})
+
             with open(os.path.join(self.attention_save_path, 'can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
                 jsonObj = {}
                 jsonObj.update(data)
@@ -246,9 +246,42 @@ class FramesStacking_SpeedInput_agent(object):
                 fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
                 fo.close()
 
-            self.att_count += 1
+            self.att_count+=1
 
         return control
+
+    def adding_roach_data(self, input_dict):
+        obs_dict = self._obs_managers.get_observation()
+        input_dict.update({'birdview': obs_dict})
+
+        control = self._ego_vehicle.get_control()
+        speed_limit = self._ego_vehicle.get_speed_limit() / 3.6 * 0.8
+        control_obs = {
+            'throttle': np.array([control.throttle], dtype=np.float32),
+            'steer': np.array([control.steer], dtype=np.float32),
+            'brake': np.array([control.brake], dtype=np.float32),
+            'gear': np.array([control.gear], dtype=np.float32),
+            'speed_limit': np.array([speed_limit], dtype=np.float32),
+        }
+
+        ev_transform = self._ego_vehicle.get_transform()
+        acc_w = self._ego_vehicle.get_acceleration()
+        vel_w = self._ego_vehicle.get_velocity()
+        ang_w = self._ego_vehicle.get_angular_velocity()
+
+        acc_ev = trans_utils.vec_global_to_ref(acc_w, ev_transform.rotation)
+        vel_ev = trans_utils.vec_global_to_ref(vel_w, ev_transform.rotation)
+
+        velocity_obs = {
+            'acc_xy': np.array([acc_ev.x, acc_ev.y], dtype=np.float32),
+            'vel_xy': np.array([vel_ev.x, vel_ev.y], dtype=np.float32),
+            'vel_ang_z': np.array([ang_w.z], dtype=np.float32)
+        }
+
+        input_dict.update({'control': control_obs})
+        input_dict.update({'velocity': velocity_obs})
+
+        return input_dict
 
     def stopping_and_wait(self):
         """
@@ -270,9 +303,9 @@ class FramesStacking_SpeedInput_agent(object):
         :return:
         """
         self._model = None
-        self.checkpoint = None
-        self.world = None
-        self.map = None
+        self.checkpoint=None
+        self.world=None
+        self.map=None
 
         self.reset()
 
@@ -295,6 +328,7 @@ class FramesStacking_SpeedInput_agent(object):
         Returns the next vehicle controls
         """
         input_data = self.sensor_interface.get_data()
+        input_data = self.adding_roach_data(input_data)
 
         timestamp = GameTime.get_time()
 
@@ -303,15 +337,17 @@ class FramesStacking_SpeedInput_agent(object):
         wallclock = GameTime.get_wallclocktime()
         wallclock_diff = (wallclock - self.wallclock_t0).total_seconds()
 
+        #if int(wallclock_diff / 60) % 10 == 0:
         #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
 
-        if len(self.inputs_buffer.queue) <= ((g_conf.ENCODER_INPUT_FRAMES_NUM - 1) * g_conf.ENCODER_STEP_INTERVAL):
+        if len(self.inputs_buffer.queue) <= 0:
             print('=== The agent is stopping and waitting for the input buffer ...')
             self.inputs_buffer.put(input_data)
             return self.stopping_and_wait()
 
         else:
-            inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue), g_conf.ENCODER_STEP_INTERVAL)]
+            inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue))]
+
             control = self.run_step(inputs)
             control.manual_gear_shift = False
 
@@ -328,43 +364,12 @@ class FramesStacking_SpeedInput_agent(object):
         ds_ids = downsample_route(global_plan_world_coord, 50)
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]
+        self._route_plan = global_plan_world_coord
 
-    def process_image(self, image):
-        image = Image.fromarray(image)
-        image = image.resize((g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1]))
-        image = TF.to_tensor(image)
-        # Normalization is really necessary if you want to use any pretrained weights.
-        image = TF.normalize(image, mean=g_conf.IMG_NORMALIZATION['mean'], std=g_conf.IMG_NORMALIZATION['std'])
-        return image
-
-    def process_speed(self, speed):
-        norm_speed = abs(speed - g_conf.DATA_NORMALIZATION['speed'][0]) / (
-                g_conf.DATA_NORMALIZATION['speed'][1] - g_conf.DATA_NORMALIZATION['speed'][0])  # [0.0, 1.0]
-        return norm_speed
-
-    def process_control_outputs(self, action_outputs):
-        if g_conf.ACCELERATION_AS_ACTION:
-            steer, acceleration = action_outputs[0], action_outputs[1]
-            if acceleration >= 0.0:
-                throttle = acceleration
-                brake = 0.0
-            else:
-                brake = np.abs(acceleration)
-                throttle = 0.0
-        else:
-            steer, throttle, brake = action_outputs[0], action_outputs[1], action_outputs[2]
-            if brake < 0.05:
-                brake = 0.0
-
-        return np.clip(steer, -1, 1), np.clip(throttle, 0, 1), np.clip(brake, 0, 1)
 
     def process_command(self, gps, imu):
         if self.waypointer is None:
             self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
-        if g_conf.DATA_COMMAND_CLASS_NUM == 4:
-            return encode_directions_4(cmd.value), cmd.value
-        elif g_conf.DATA_COMMAND_CLASS_NUM == 6:
-            return encode_directions_6(cmd.value), cmd.value
-
+        return encode_directions_4(cmd.value), cmd.value

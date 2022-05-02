@@ -312,6 +312,8 @@ class BenchmarkEvaluator(object):
             scenario = RouteScenario(world=self.world, config=config, debug_mode=args.debug)
             self.statistics_manager.set_scenario(scenario.scenario)
 
+            self.agent_instance.set_ego_vehicle(scenario._ego_vehicle)
+
             # Night mode
             if config.weather.sun_altitude_angle < 0.0:
                 for vehicle in scenario.ego_vehicles:
