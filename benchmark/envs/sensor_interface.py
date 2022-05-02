@@ -346,7 +346,7 @@ class SensorInterface(object):
             elif tag in ['GPS']:
                 if self._direction_planner is None:
                     self._direction_planner = Waypointer(self._global_plan, data)
-                _, _, cmd = self._direction_planner.tick(data, self._data_buffers['IMU'])
+                _, _, cmd = self._direction_planner.checkpoint
                 wp_data = {'direction': float(cmd.value)}
                 writer.write_gnss(wp_data, 'can_bus')
             elif tag in ['can_bus', 'SPEED']:

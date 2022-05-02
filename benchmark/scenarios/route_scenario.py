@@ -37,7 +37,8 @@ from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
 from srunner.scenarios.selfDefined_scenarios_YiXiao import (VehicleTurningRoute,
                                                             SignalJunctionChaos,
                                                             SignalJunctionLeadingVehicleCrossingRedTrafficLight,
-                                                            SignalJunctionObstacleCrossingGreenTrafficLight)
+                                                            SignalJunctionObstacleCrossingGreenTrafficLight,
+                                                            SignalJunctionCommandGiven)
 
 
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTest,
@@ -59,14 +60,13 @@ INITIAL_SECONDS_DELAY = 5.0
 
 SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
     "Scenario1": ControlLoss,
-    "Scenario2": FollowLeadingVehicleWithObstacle,
+    "Scenario2": SignalJunctionCommandGiven,
     "Scenario3": SignalJunctionChaos,
     "Scenario4": VehicleTurningRoute,
     "Scenario5": SignalJunctionLeadingVehicleCrossingRedTrafficLight,
     "Scenario6": SignalJunctionObstacleCrossingGreenTrafficLight,
     'Scenario7': DynamicObjectCrossing,
 }
-
 
 def oneshot_behavior(name, variable_name, behaviour):
     """
@@ -248,7 +248,8 @@ class RouteScenario(BasicScenario):
             self._draw_waypoints(world, self.route, vertical_shift=1.0, persistency=50000.0)
 
         # Just draw once, baseline model
-        if config.agent._model.name == 'FramesStacking_SpeedLossInput':
+        if False:
+        #if config.agent._model.name == 'FramesStacking_SpeedLossInput':
             save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name)
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
@@ -553,6 +554,7 @@ class RouteScenario(BasicScenario):
             'Scenario4': 0,
             'Scenario5': 0,
             'Scenario6': 0,
+            'Scenario7': 0,
         }
 
         #amount = town_amount[config.town] if config.town in town_amount else 0
