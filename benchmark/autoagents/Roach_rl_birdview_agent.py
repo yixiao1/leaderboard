@@ -33,6 +33,7 @@ from benchmark.envs.data_writer import Writer
 from omegaconf import OmegaConf
 from network.models.architectures.Roach_rl_birdview.birdview.chauffeurnet import ObsManager
 import network.models.architectures.Roach_rl_birdview.utils.transforms as trans_utils
+from network.models.architectures.Roach_rl_birdview.utils.traffic_light import TrafficLightHandler
 
 def checkpoint_parse_configuration_file(filename):
 
@@ -118,6 +119,8 @@ class Roach_rl_birdview_agent(object):
     def set_world(self, world):
         self.world=world
         self.map=self.world.get_map()
+
+        TrafficLightHandler.reset(self.world)
 
     def set_ego_vehicle(self, ego_vehicle):
         self._ego_vehicle=ego_vehicle
@@ -205,12 +208,12 @@ class Roach_rl_birdview_agent(object):
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_right.png'))
             """
 
-            command_sign = command_sign.resize((130, 40))
+            command_sign = command_sign.resize((390, 120))
 
             mat = Image.new('RGB', (
-                last_input_ontop.width + last_input.width, max(last_input_ontop.height, last_input.height * 2)),
+                last_input_ontop.width + last_input.width, max(last_input_ontop.height, last_input.height)),
                             (0, 0, 0))
-            mat.paste(command_sign, (last_input_ontop.width + 230, last_input.height * 2 + 20))
+            mat.paste(command_sign, (last_input_ontop.width + 255, last_input.height + 20))
 
             mat.paste(last_input_ontop, (0, 0))
             mat.paste(last_input, (last_input_ontop.width, 0))
@@ -218,15 +221,15 @@ class Roach_rl_birdview_agent(object):
 
             draw_mat = ImageDraw.Draw(mat)
             font = ImageFont.truetype(os.path.join(os.getcwd(), 'signs', 'arial.ttf'), 20)
-            draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 60, last_input_ontop.height - 30),
                           str("Steer " + "%.3f" % steer), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 180, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 270, last_input_ontop.height - 30),
                           str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 480, last_input_ontop.height - 30),
                           str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 675, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
-            mat = mat.resize((420, 180))
+            mat = mat.resize((650, 225))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
 
             data = inputs_data[-1]['can_bus'][1]
