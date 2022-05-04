@@ -307,39 +307,22 @@ class RouteScenario(BasicScenario):
 
         # we change the Vehicle Physics Control in CARLA 0.9.13 the same as the setting in CARLA 0.9.10
         vehicle_physics = ego_vehicle.get_physics_control()
+        wheels = vehicle_physics.wheels
+        for wheel in wheels:
+            wheel.lat_stiff_max_load = 2.0
+            wheel.long_stiff_value = 1000.0
+            wheel.lat_stiff_value = 20.0
 
-        vehicle_physics.torque_curve = [carla.Vector2D(x=0, y=400),
-                                        carla.Vector2D(x=1890, y=500),
-                                        carla.Vector2D(x=5730, y=400)]
-        vehicle_physics.max_rpm = 5800
-        vehicle_physics.damping_rate_full_throttle = 0.15
-        vehicle_physics.gear_switch_time = 0.5
-        vehicle_physics.final_ratio = 4
-        vehicle_physics.mass = 2404
-        front_left_wheel = carla.WheelPhysicsControl(tire_friction=3.5, damping_rate=0.25, max_steer_angle=70.0, radius=35.5,
-                                                     max_brake_torque=1500.0, max_handbrake_torque=0.0,
-                                                     position=carla.Vector3D(x=-1855.752686,y=20321.986328,z=35.430557))
-        front_right_wheel = carla.WheelPhysicsControl(tire_friction=3.5, damping_rate=0.25, max_steer_angle=70.0, radius=35.5,
-                                                     max_brake_torque=1500.0, max_handbrake_torque=0.0,
-                                                     position=carla.Vector3D(x=-1855.752686,y=20478.412109,z=35.430561))
-        rear_left_wheel = carla.WheelPhysicsControl(tire_friction=3.5, damping_rate=0.25, max_steer_angle=0.0, radius=35.5,
-                                                     max_brake_torque=1500.0, max_handbrake_torque=3000.0,
-                                                     position=carla.Vector3D(x=-2142.864746, y=20322.703125, z=35.430557))
-        rear_right_wheel = carla.WheelPhysicsControl(tire_friction=3.5, damping_rate=0.25, max_steer_angle=0.0, radius=35.5,
-                                                     max_brake_torque=1500.0, max_handbrake_torque=3000.0,
-                                                     position=carla.Vector3D(x=-2142.474365, y=20479.128906, z=35.430561))
-
-        vehicle_physics.wheels = [front_left_wheel, front_right_wheel, rear_left_wheel, rear_right_wheel]
-
-        time.sleep(2)
+        vehicle_physics.wheels = wheels
         ego_vehicle.apply_physics_control(vehicle_physics)
-        time.sleep(2)
+        time.sleep(2.0)
 
         vehicle_physics_new = ego_vehicle.get_physics_control()
 
         print('===================== After modification =====================')
-        print("\n mass", vehicle_physics_new.mass, '(shoud be 2404)')
-        print("\n damping_rate_full_throttle", vehicle_physics.damping_rate_full_throttle, '(shoud be 0.15)')
+        print("\n lat_stiff_max_load", vehicle_physics_new.wheels[0].lat_stiff_max_load, '(shoud be 2.0)')
+        print("\n lat_stiff_value", vehicle_physics_new.wheels[0].lat_stiff_value, '(shoud be 20.0)')
+        print("\n long_stiff_value", vehicle_physics_new.wheels[0].long_stiff_value, '(shoud be 1000.0)')
         print('\n ===============================================')
 
         return ego_vehicle
