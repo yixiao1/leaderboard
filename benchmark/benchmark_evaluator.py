@@ -38,6 +38,8 @@ from benchmark.utils.statistics_manager import StatisticsManager
 from benchmark.utils.route_indexer import RouteIndexer
 from benchmark.utils.server_manager import ServerManagerDocker, find_free_port
 
+from tools.utils import draw_trajectory
+
 sensors_to_icons = {
     'sensor.camera.rgb':        'carla_camera',
     'sensor.lidar.ray_cast':    'carla_lidar',
@@ -146,6 +148,8 @@ class BenchmarkEvaluator(object):
             # Reset to asynchronous mode
             settings = self.world.get_settings()
             settings.synchronous_mode = False
+            settings.max_substeps = 10
+            settings.max_substep_delta_time = 0.01
             settings.fixed_delta_seconds = None
             self.world.apply_settings(settings)
             self.traffic_manager.set_synchronous_mode(False)
@@ -181,6 +185,9 @@ class BenchmarkEvaluator(object):
         self.world = self.client.load_world(town)
         self.world.set_weather(config.weather)
         settings = self.world.get_settings()
+        if self.frame_rate < 10.0:
+            settings.max_substeps = 16
+            settings.max_substep_delta_time = 0.015
         settings.fixed_delta_seconds = 1.0 / self.frame_rate
         settings.synchronous_mode = True
         settings.no_rendering_mode = True
@@ -378,6 +385,11 @@ class BenchmarkEvaluator(object):
             if args.record:
                 self.client.stop_recorder()
 
+            if args.draw_trajectory:
+                if self.agent_instance.attention_save_path:
+                    draw_trajectory(self.agent_instance.attention_save_path,
+                                    self.world, config.town, config.trajectory)
+
             # Remove all actors
             scenario.remove_all_actors()
 
@@ -461,6 +473,7 @@ def main():
 
     parser.add_argument('--save-sensors', action="store_true", help='to save sensor images')
     parser.add_argument('--save-attention', action="store_true", help=' to save the last attention layer of backbone')
+    parser.add_argument('--draw-trajectory', action="store_true", help=' to draw the trajectory of driving')
     parser.add_argument('--fps', default=10, help='The frame rate of CARLA world')
 
     arguments = parser.parse_args()

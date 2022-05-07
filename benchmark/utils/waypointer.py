@@ -27,8 +27,8 @@ class Waypointer:
         compass = 0.0 if np.isnan(imu_data[-1]) else imu_data[-1]
         ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
         loc_in_ev = self.vec_global_to_ref(next_vec_in_global, ref_rot_in_global)
-        if (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0) or \
-                (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0):  # we give command in 3 meters in advance
+        if (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0):
+                #or (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0):  # we give command in 3 meters in advance
             self.current_idx += 1
         self.current_idx = min(self.current_idx, len(self._global_plan_gps) - 2)
 

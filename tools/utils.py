@@ -2,7 +2,8 @@
 import matplotlib.pyplot as plt
 
 import carla
-
+import glob
+import os
 
 COLOR_BUTTER_0 = (252/ 255.0, 233/ 255.0, 79/ 255.0)
 COLOR_BUTTER_1 = (237/ 255.0, 212/ 255.0, 0/ 255.0)
@@ -65,6 +66,8 @@ def draw_point(location, result_color, size, alpha=None, fig=None, text=None):
     if text:
         plt.text(pixel[0]+20, pixel[1]+20, text, color=result_color, fontsize='x-small')
 
+    return pixel
+
 def draw_point_data(datapoint, fig = None, color=COLOR_BLACK, size=12, alpha=None, text=None):
     """
     We draw in a certain position at the map
@@ -75,7 +78,8 @@ def draw_point_data(datapoint, fig = None, color=COLOR_BLACK, size=12, alpha=Non
 
     world_pos = datapoint
     location = carla.Location(x=world_pos[0], y=world_pos[1], z=world_pos[2])
-    draw_point(location, color, size, alpha, fig=fig, text=text)
+    pixel = draw_point(location, color, size, alpha, fig=fig, text=text)
+    return pixel
 
 def world_to_pixel(location, offset=(0, 0)):
     x = SCALE * pixels_per_meter * (location.x - world_offset[0])
@@ -108,7 +112,7 @@ def draw_lane(lane, color):
         polygon = [world_to_pixel(x) for x in polygon]
 
         if len(polygon) > 2:
-            polygon = plt.Polygon(polygon, edgecolor=color)
+            polygon = plt.Polygon(polygon, color=color)
 
             plt.gca().add_patch(polygon)
 
@@ -179,3 +183,61 @@ def draw_map(world):
 
     topology = world.get_map().get_topology()
     draw_topology(topology, 0)
+
+
+
+def tryint(s):
+    try:
+        return int(s)
+    except:
+        return s
+
+
+def alphanum_key(s):
+    """ Turn a string into a list of string and number chunks.
+        "z23a" -> ["z", 23, "a"]
+    """
+    return [tryint(c) for c in re.split('([0-9]+)', s)]
+
+
+def sort_nicely(l):
+    """ Sort the given list in the way that humans expect.
+    """
+    l.sort(key=alphanum_key)
+
+def draw_trajectory(dataset_path, world, town_name, route):
+    trajectories_fig = plt.figure(0)
+    import json
+    draw_map(world)
+    json_path_list = glob.glob(os.path.join(dataset_path, 'can_bus*.json'))
+    sort_nicely(json_path_list)
+    for json_file in json_path_list:
+        with open(json_file) as json_:
+            data = json.load(json_)
+            start_point = [route[0].x, route[0].y, route[0].z]
+            _ = draw_point_data(start_point, trajectories_fig, color=(0 / 255.0, 0 / 255.0, 255 / 255.0), size=30)
+            end_point = [route[-1].x, route[-1].y, route[-1].z]
+            _ = draw_point_data(end_point, trajectories_fig, color=(252 / 255.0, 175 / 255.0, 62 / 255.0), size=20)
+            ego_location = data['ego_location']
+            datapoint = [ego_location[0], ego_location[1], ego_location[2]]
+            _ = draw_point_data(datapoint, trajectories_fig, color=(0.0/ 255.0, 255.0/ 255.0, 0.0/ 255.0), size=20)
+            # TODO: HARDCODING
+            try:
+                actor_location = data['SignalJunctionLeadingVehicleCrossingRedTrafficLight']['obstacle1_location']
+                datapoint = [actor_location[0], actor_location[1], actor_location[2]]
+                _ = draw_point_data(datapoint, trajectories_fig, color=(255/255.0,192/255.0,203/255.0), size=20)
+            except:
+                pass
+
+    if town_name == 'Town01':
+        plt.xlim(-500, 5000)
+        plt.ylim(-500, 4500)
+    elif town_name == 'Town02':
+        plt.xlim(-250, 2500)
+        plt.ylim(1000, 4000)
+
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.title(dataset_path.split('/')[-2])
+    trajectories_fig.savefig(os.path.join('/'.join(dataset_path.split('/')[:-1]) + '_' + 'trajectory.png'))
+    plt.close()

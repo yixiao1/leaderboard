@@ -113,6 +113,9 @@ class TemporalTFM_SpeedInput_LastAction_Token_agent(object):
         self.world=world
         self.map=self.world.get_map()
 
+    def set_ego_vehicle(self, ego_vehicle):
+        self._ego_vehicle=ego_vehicle
+
     def sensors(self):  # pylint: disable=no-self-use
         """
         Define the sensor suite required by the agent
@@ -151,8 +154,11 @@ class TemporalTFM_SpeedInput_LastAction_Token_agent(object):
                      for i in range(len(inputs_data))]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights = self._model.forward_eval(norm_rgb, direction, norm_speed)
-        last_action_outputs = actions_outputs
-        steer, throttle, brake = self.process_control_outputs(last_action_outputs.detach().cpu().numpy().squeeze(0))
+        all_action_outputs = [
+            self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
+            for i in range(g_conf.ENCODER_INPUT_FRAMES_NUM)]
+        last_action_outputs = all_action_outputs[-1]
+        steer, throttle, brake = self.process_control_outputs(last_action_outputs)
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)

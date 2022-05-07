@@ -231,15 +231,12 @@ class RouteScenario(BasicScenario):
 
         self.route = route
         CarlaDataProvider.set_ego_vehicle_route(convert_transform_to_location(self.route))
+        CarlaDataProvider.set_waypoint_trajectory(config.trajectory)
 
         config.agent.set_global_plan(gps_route, self.route)
 
         # Sample the scenarios to be used for this route instance.
         self.sampled_scenarios_definitions = self._scenario_sampling(potential_scenarios_definitions)
-
-        if not self.sampled_scenarios_definitions:
-            raise RuntimeError('The scenario is not defined properly: No trigger point could be used in this route')
-
         # Timeout of scenario in seconds
         self.timeout = self._estimate_route_timeout()
 
@@ -248,7 +245,7 @@ class RouteScenario(BasicScenario):
             self._draw_waypoints(world, self.route, vertical_shift=1.0, persistency=50000.0)
 
         # Just draw once, baseline model
-        if False:
+        if True:
         #if config.agent._model.name == 'FramesStacking_SpeedLossInput':
             save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name)
             if not os.path.exists(save_path):
@@ -288,6 +285,9 @@ class RouteScenario(BasicScenario):
                                      orientation='landscape', bbox_inches='tight', dpi=1200)
             plt.close(trajectories_fig)
 
+        if not self.sampled_scenarios_definitions:
+            raise RuntimeError('The scenario is not defined properly: No trigger point could be used in this route')
+
     def _update_ego_vehicle(self):
         """
         Set/Update the start position of the ego_vehicle
@@ -312,6 +312,7 @@ class RouteScenario(BasicScenario):
             wheel.lat_stiff_max_load = 2.0
             wheel.long_stiff_value = 1000.0
             wheel.lat_stiff_value = 20.0
+            wheel.max_brake_torque = 1500.0
 
         vehicle_physics.wheels = wheels
         ego_vehicle.apply_physics_control(vehicle_physics)
@@ -617,11 +618,11 @@ class RouteScenario(BasicScenario):
         route_criterion = InRouteTest(self.ego_vehicles[0],
                                       route=route,
                                       offroad_max=30,
-                                      terminate_on_failure=False)
+                                      terminate_on_failure=True)
                                       
         completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
+        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=True)
 
         red_light_criterion = RunningRedLightTest(self.ego_vehicles[0], terminate_on_failure=False)
 

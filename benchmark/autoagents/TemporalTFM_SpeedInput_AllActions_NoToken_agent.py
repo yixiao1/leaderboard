@@ -113,6 +113,9 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
         self.world=world
         self.map=self.world.get_map()
 
+    def set_ego_vehicle(self, ego_vehicle):
+        self._ego_vehicle=ego_vehicle
+
     def sensors(self):  # pylint: disable=no-self-use
         """
         Define the sensor suite required by the agent
@@ -151,8 +154,12 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
                      for i in range(len(inputs_data))]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights = self._model.forward_eval(norm_rgb, direction, norm_speed)
-        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):]
-        steer, throttle, brake = self.process_control_outputs(last_action_outputs.detach().cpu().numpy().squeeze(0))
+        all_action_outputs = [self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
+                              for i in range(g_conf.ENCODER_INPUT_FRAMES_NUM)]
+
+        last_action_outputs = all_action_outputs[-1]
+
+        steer, throttle, brake = last_action_outputs
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)
@@ -220,7 +227,26 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
                           str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
             draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
-            mat = mat.resize((420, 180))
+
+            """
+            for i, prev_action in enumerate(all_action_outputs[:-1]):
+                steer = prev_action[0]
+                throttle = prev_action[1]
+                brake = prev_action[2]
+                speed = inputs_data[i]['SPEED'][1]['speed']
+                draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
+                              str("Steer " + "%.3f" % steer), fill=(255, 255, 255), font=font)
+                draw_mat.text((last_input_ontop.width + 180, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
+                              str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
+                draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
+                              str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
+                draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
+                              str("Speed " + "%.3f" % speed), fill=(255, 255, 255),
+                              font=font)
+                              
+            """
+
+            #mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
 
             data = inputs_data[-1]['can_bus'][1]
@@ -303,7 +329,8 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
         if len(self.inputs_buffer.queue) <= ((g_conf.ENCODER_INPUT_FRAMES_NUM-1) * g_conf.ENCODER_STEP_INTERVAL):
             print('=== The agent is stopping and waitting for the input buffer ...')
             self.inputs_buffer.put(input_data)
-            return self.stopping_and_wait()
+            control = self.stopping_and_wait()
+            return control
 
         else:
             inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue), g_conf.ENCODER_STEP_INTERVAL)]
