@@ -45,9 +45,10 @@ class Waypointer:
 
         # Fix the command given too late bug
         if tl_dist_to_last_wp and tl_dist_to_last_wp>10.0:
-            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0)
+            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0) or \
+                                        (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0)
         else:
-            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and  loc_in_ev.x < 0.0)
+            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0)
 
         if command_trigger_condition:
             self.current_idx += 1

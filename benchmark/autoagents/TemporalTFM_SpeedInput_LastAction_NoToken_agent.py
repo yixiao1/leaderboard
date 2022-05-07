@@ -179,7 +179,6 @@ class TemporalTFM_SpeedInput_LastAction_NoToken_agent(object):
             blend_im = Image.blend(last_input, last_att, 0.7)
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
-            print(self.att_count)
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
             if float(cmd) == 1.0:
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_left.png'))
