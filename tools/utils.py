@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import carla
 import glob
 import os
+import json
+import re
 
 COLOR_BUTTER_0 = (252/ 255.0, 233/ 255.0, 79/ 255.0)
 COLOR_BUTTER_1 = (237/ 255.0, 212/ 255.0, 0/ 255.0)
@@ -207,7 +209,7 @@ def sort_nicely(l):
 
 def draw_trajectory(dataset_path, world, town_name, route):
     trajectories_fig = plt.figure(0)
-    import json
+
     draw_map(world)
     json_path_list = glob.glob(os.path.join(dataset_path, 'can_bus*.json'))
     sort_nicely(json_path_list)
@@ -220,7 +222,7 @@ def draw_trajectory(dataset_path, world, town_name, route):
             _ = draw_point_data(end_point, trajectories_fig, color=(252 / 255.0, 175 / 255.0, 62 / 255.0), size=20)
             ego_location = data['ego_location']
             datapoint = [ego_location[0], ego_location[1], ego_location[2]]
-            _ = draw_point_data(datapoint, trajectories_fig, color=(0.0/ 255.0, 255.0/ 255.0, 0.0/ 255.0), size=20)
+            _ = draw_point_data(datapoint, trajectories_fig, color=(0.0/ 255.0, 255.0/ 255.0, 0.0/ 255.0), size=8)
             # TODO: HARDCODING
             try:
                 actor_location = data['SignalJunctionLeadingVehicleCrossingRedTrafficLight']['obstacle1_location']
