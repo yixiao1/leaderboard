@@ -8,14 +8,23 @@ from agents.navigation.local_planner import RoadOption
 class Waypointer:
     EARTH_RADIUS_EQUA = 6378137.0  # 6371km
 
-    def __init__(self, global_plan_gps, current_gnss):
+    def __init__(self, global_plan_gps, current_gnss, world):
+        self.world=world
         self._global_plan_gps = []
         for node in global_plan_gps:
             gnss, cmd = node
             self._global_plan_gps.append(([gnss['lat'], gnss['lon'], gnss['z']], cmd))
 
-        current_location = self.gps_to_location(current_gnss)
+        current_location = self.gps_to_location([current_gnss['lat'], current_gnss['lon'], current_gnss['z']])
         self.checkpoint = (current_location.x, current_location.y, RoadOption.LANEFOLLOW)
+
+        self._traffic_light_map = dict()
+        for traffic_light in world.get_actors().filter('*traffic_light*'):
+            if traffic_light not in self._traffic_light_map.keys():
+                self._traffic_light_map[traffic_light] = traffic_light.get_transform()
+            else:
+                raise KeyError(
+                    "Traffic light '{}' already registered. Cannot register twice!".format(traffic_light.id))
 
         self.current_idx = -1
 
@@ -23,12 +32,26 @@ class Waypointer:
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)
 
+        tl_dist_to_last_wp = None
+        try:
+            next_tl, tl_dist_to_last_wp= self.get_next_traffic_light(current_location)
+            if next_tl:
+                print(tl_dist_to_last_wp)
+        except:
+            pass
+
         next_vec_in_global = self.gps_to_location(next_gps) - self.gps_to_location(gnss_data)
         compass = 0.0 if np.isnan(imu_data[-1]) else imu_data[-1]
         ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
         loc_in_ev = self.vec_global_to_ref(next_vec_in_global, ref_rot_in_global)
-        if (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0):
-                #or (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0):  # we give command in 3 meters in advance
+
+        # Fix the command given too late bug
+        if tl_dist_to_last_wp and tl_dist_to_last_wp>10.0:
+            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0)
+        else:
+            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and  loc_in_ev.x < 0.0)
+
+        if command_trigger_condition:
             self.current_idx += 1
         self.current_idx = min(self.current_idx, len(self._global_plan_gps) - 2)
 
@@ -101,3 +124,35 @@ class Waypointer:
 
         rotation_matrix = yaw_matrix.dot(pitch_matrix).dot(roll_matrix)
         return rotation_matrix
+
+    def get_next_traffic_light(self, location):
+        """
+        returns the next relevant traffic light for the provided actor, or waypoint
+        """
+
+        waypoint = self.world.get_map().get_waypoint(location)
+
+        # Create list of all waypoints until next intersection
+        list_of_waypoints = []
+        while waypoint and not waypoint.is_intersection:
+            list_of_waypoints.append(waypoint)
+            waypoint = waypoint.next(1.0)[0]
+
+        # If the list is empty, the actor is in an intersection
+        if not list_of_waypoints:
+            return None
+
+        relevant_traffic_light = None
+        distance_to_relevant_traffic_light = float("inf")
+
+        for traffic_light in self._traffic_light_map:
+            if hasattr(traffic_light, 'trigger_volume'):
+                tl_t = self._traffic_light_map[traffic_light]
+                transformed_tv = tl_t.transform(traffic_light.trigger_volume.location)
+                distance = carla.Location(transformed_tv).distance(list_of_waypoints[-1].transform.location)
+
+                if distance < distance_to_relevant_traffic_light:
+                    relevant_traffic_light = traffic_light
+                    distance_to_relevant_traffic_light = distance
+
+        return relevant_traffic_light, distance_to_relevant_traffic_light

@@ -179,6 +179,7 @@ class TemporalTFM_SpeedInput_LastAction_NoToken_agent(object):
             blend_im = Image.blend(last_input, last_att, 0.7)
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
+            print(self.att_count)
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
             if float(cmd) == 1.0:
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_left.png'))
@@ -347,6 +348,7 @@ class TemporalTFM_SpeedInput_LastAction_NoToken_agent(object):
         ds_ids = downsample_route(global_plan_world_coord, 50)
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]
+        self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
 
     def set_ego_vehicle(self, ego_vehicle):
         self._ego_vehicle=ego_vehicle
@@ -385,8 +387,6 @@ class TemporalTFM_SpeedInput_LastAction_NoToken_agent(object):
 
 
     def process_command(self, gps, imu):
-        if self.waypointer is None:
-            self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
         if g_conf.DATA_COMMAND_CLASS_NUM == 4:

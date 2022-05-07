@@ -350,6 +350,7 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
         ds_ids = downsample_route(global_plan_world_coord, 50)
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]
+        self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
 
     def process_image(self, image):
         image = Image.fromarray(image)
@@ -385,8 +386,6 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
 
 
     def process_command(self, gps, imu):
-        if self.waypointer is None:
-            self.waypointer = Waypointer(self._global_plan, gps)
         _, _, cmd = self.waypointer.tick(gps, imu)
 
         if g_conf.DATA_COMMAND_CLASS_NUM == 4:
