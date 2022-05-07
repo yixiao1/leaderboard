@@ -35,8 +35,6 @@ class Waypointer:
         tl_dist_to_last_wp = None
         try:
             next_tl, tl_dist_to_last_wp= self.get_next_traffic_light(current_location)
-            if next_tl:
-                print(tl_dist_to_last_wp)
         except:
             pass
 
