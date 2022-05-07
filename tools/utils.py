@@ -217,12 +217,12 @@ def draw_trajectory(dataset_path, world, town_name, route):
         with open(json_file) as json_:
             data = json.load(json_)
             start_point = [route[0].x, route[0].y, route[0].z]
-            _ = draw_point_data(start_point, trajectories_fig, color=(0 / 255.0, 0 / 255.0, 255 / 255.0), size=30)
+            _ = draw_point_data(start_point, trajectories_fig, color=(0/ 255.0, 0/ 255.0, 0/ 255.0), size=30)
             end_point = [route[-1].x, route[-1].y, route[-1].z]
-            _ = draw_point_data(end_point, trajectories_fig, color=(252 / 255.0, 175 / 255.0, 62 / 255.0), size=20)
+            _ = draw_point_data(end_point, trajectories_fig, color=(252 / 255.0, 175 / 255.0, 62 / 255.0), size=30)
             ego_location = data['ego_location']
             datapoint = [ego_location[0], ego_location[1], ego_location[2]]
-            _ = draw_point_data(datapoint, trajectories_fig, color=(0.0/ 255.0, 255.0/ 255.0, 0.0/ 255.0), size=8)
+            _ = draw_point_data(datapoint, trajectories_fig, color=(0.0/ 255.0, 255.0/ 255.0, 0.0/ 255.0), size=10)
             # TODO: HARDCODING
             try:
                 actor_location = data['SignalJunctionLeadingVehicleCrossingRedTrafficLight']['obstacle1_location']
