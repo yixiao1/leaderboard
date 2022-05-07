@@ -244,8 +244,8 @@ class RouteScenario(BasicScenario):
         if debug_mode:
             self._draw_waypoints(world, self.route, vertical_shift=1.0, persistency=50000.0)
 
-        # Just draw once, baseline model
-        if True:
+        # Just draw and check
+        if False:
         #if config.agent._model.name == 'FramesStacking_SpeedLossInput':
             save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name)
             if not os.path.exists(save_path):
