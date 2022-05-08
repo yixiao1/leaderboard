@@ -55,7 +55,7 @@ class Waypointer:
         if next_road_option == RoadOption.LANEFOLLOW:
             command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0)
         else:
-            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 5.0 and loc_in_ev.x > 0.0)
+            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x > 0.0)
 
 
         if command_trigger_condition:
