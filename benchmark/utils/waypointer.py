@@ -32,36 +32,46 @@ class Waypointer:
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)
 
-        tl_dist_to_last_wp = None
-        try:
-            next_tl, tl_dist_to_last_wp= self.get_next_traffic_light(current_location)
-        except:
-            pass
+        #tl_dist_to_last_wp = None
+        #try:
+        #    next_tl, tl_dist_to_last_wp= self.get_next_traffic_light(current_location)
+        #except:
+        #    pass
 
         next_vec_in_global = self.gps_to_location(next_gps) - self.gps_to_location(gnss_data)
         compass = 0.0 if np.isnan(imu_data[-1]) else imu_data[-1]
         ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
         loc_in_ev = self.vec_global_to_ref(next_vec_in_global, ref_rot_in_global)
 
-        # Fix the command given too late bug
-        if tl_dist_to_last_wp and tl_dist_to_last_wp>10.0:
-            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 3.0 and loc_in_ev.x > 0.0) or \
-                                        (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0)
+        # Fix the command given too late bug in the intersection
+        self.next_idx = min(self.current_idx+1, len(self._global_plan_gps) - 2)
+        _, next_road_option_0 = self._global_plan_gps[max(0, self.next_idx)]
+        _, next_road_option_1 = self._global_plan_gps[self.next_idx + 1]
+        if (next_road_option_0 in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]) \
+                and (next_road_option_1 not in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]):
+            next_road_option = next_road_option_1
         else:
+            next_road_option = next_road_option_0
+        if next_road_option == RoadOption.LANEFOLLOW:
             command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0)
+        else:
+            command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 5.0 and loc_in_ev.x > 0.0)
+
 
         if command_trigger_condition:
-            self.current_idx += 1
-        self.current_idx = min(self.current_idx, len(self._global_plan_gps) - 2)
-
-        _, road_option_0 = self._global_plan_gps[max(0, self.current_idx)]
-        gps_point, road_option_1 = self._global_plan_gps[self.current_idx + 1]
-
-        if (road_option_0 in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]) \
-                and (road_option_1 not in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]):
-            road_option = road_option_1
+            self.current_idx = min(self.current_idx+1, len(self._global_plan_gps) - 2)
+            road_option = next_road_option
         else:
-            road_option = road_option_0
+            self.current_idx = min(self.current_idx, len(self._global_plan_gps) - 2)
+            _, road_option_0 = self._global_plan_gps[max(0, self.current_idx)]
+            gps_point, road_option_1 = self._global_plan_gps[self.current_idx + 1]
+
+            if (road_option_0 in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]) \
+                    and (road_option_1 not in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]):
+                road_option = road_option_1
+            else:
+                road_option = road_option_0
+
         self.checkpoint = (current_location.x, current_location.y, road_option)
 
         return self.checkpoint
