@@ -163,8 +163,6 @@ class Roach_rl_birdview_agent(object):
 
         input_data = copy.deepcopy(inputs_data)
 
-        print(self.att_count)
-
         policy_input = self._wrapper_class.process_obs(input_data[-1], self._wrapper_kwargs['input_states'], train=False)
 
         actions, _, _, _, _, _ = self._policy.forward(
@@ -184,10 +182,8 @@ class Roach_rl_birdview_agent(object):
                 ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
                 loc_in_ev = self.waypointer.vec_global_to_ref(vec_ego_actor_in_global, ref_rot_in_global)
 
-                print(loc_in_ev.x, loc_in_ev.y, loc_in_ev.z)
                 vec_actor_move = actor_transform.location - self.first_vehicle_actor_loc
                 actor_move_dist = math.sqrt(vec_actor_move.x **2 + vec_actor_move.y**2)
-                print(actor_move_dist)
 
                 ego_wp =self.map.get_waypoint(ego_location)
 
@@ -197,10 +193,10 @@ class Roach_rl_birdview_agent(object):
                 if actor_move_dist>0.1 and loc_in_ev.x>0.0 and (dist_ego_actor)<20.0:
                     # front right in image
                     if loc_in_ev.y > 0.0:
-                        if 225.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) < 315.0:
+                        if 225.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 315.0:
                             control = self.takeout_control()
                     elif loc_in_ev.y < 0.0:
-                        if 45.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) < 135.0:
+                        if 45.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 135.0:
                             control = self.takeout_control()
 
         steer = control.steer
@@ -340,6 +336,7 @@ class Roach_rl_birdview_agent(object):
         control.throttle = 0.0
         control.brake = 1.0
         control.hand_brake = False
+        print('  Dangerous!! Taking out control!!')
 
         return control
 

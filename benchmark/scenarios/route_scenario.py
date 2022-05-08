@@ -287,6 +287,8 @@ class RouteScenario(BasicScenario):
 
         if not self.sampled_scenarios_definitions:
             raise RuntimeError('The scenario is not defined properly: No trigger point could be used in this route')
+        else:
+            print('Number of Trigger:', len(self.sampled_scenarios_definitions))
 
     def _update_ego_vehicle(self):
         """
@@ -544,18 +546,19 @@ class RouteScenario(BasicScenario):
         #amount = town_amount[config.town] if config.town in town_amount else 0
         amount = scenario_amount[config.defined_available_senarios_list[0]] if config.defined_available_senarios_list[0] in scenario_amount else 0
 
-        new_actors = CarlaDataProvider.request_new_batch_actors('vehicle.*',
-                                                                amount,
-                                                                carla.Transform(),
-                                                                autopilot=True,
-                                                                random_location=True,
-                                                                rolename='background')
+        for actor_typ in ['vehicle.*', 'walker.*']:
+            new_actors = CarlaDataProvider.request_new_batch_actors(actor_typ,
+                                                                    amount,
+                                                                    carla.Transform(),
+                                                                    autopilot=True,
+                                                                    random_location=True,
+                                                                    rolename='background')
 
-        if new_actors is None:
-            raise Exception("Error: Unable to add the background activity, all spawn points were occupied")
+            if new_actors is None:
+                raise Exception("Error: Unable to add the background activity, all spawn points were occupied")
 
-        for _actor in new_actors:
-            self.other_actors.append(_actor)
+            for _actor in new_actors:
+                self.other_actors.append(_actor)
 
         # Add all the actors of the specific scenarios to self.other_actors
         for scenario in self.list_scenarios:
