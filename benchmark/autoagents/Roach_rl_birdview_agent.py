@@ -190,13 +190,13 @@ class Roach_rl_birdview_agent(object):
                 dist_ego_actor = math.sqrt(loc_in_ev.x**2+loc_in_ev.y**2)
 
                 # the actor within 20 meters is moving and in the front to the ego
-                if actor_move_dist>0.1 and loc_in_ev.x>0.0 and (dist_ego_actor)<20.0:
+                if actor_move_dist>0.5 and loc_in_ev.x>0.0 and (dist_ego_actor)<20.0:
                     # front right in image
                     if loc_in_ev.y > 0.0:
-                        if 225.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 315.0:
+                        if 225.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 315.0 or abs(loc_in_ev.y)<ego_wp.lane_width*0.5:
                             control = self.takeout_control()
                     elif loc_in_ev.y < 0.0:
-                        if 45.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 135.0:
+                        if 45.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 135.0 or abs(loc_in_ev.y)<ego_wp.lane_width*0.5:
                             control = self.takeout_control()
 
         steer = control.steer
@@ -209,7 +209,7 @@ class Roach_rl_birdview_agent(object):
             last_input = input_data[-1]['rgb_central'][1]
             last_input = Image.fromarray(last_input)
 
-            """
+            #"""
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
@@ -254,7 +254,7 @@ class Roach_rl_birdview_agent(object):
             #mat = mat.resize((650, 225))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
             
-            """
+            #"""
 
             data = inputs_data[-1]['can_bus'][1]
             speed_data = inputs_data[-1]['SPEED'][1]
