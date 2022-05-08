@@ -36,9 +36,9 @@ from srunner.scenarios.follow_leading_vehicle_YiXiao import FollowLeadingVehicle
 from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
 from srunner.scenarios.selfDefined_scenarios_YiXiao import (VehicleTurningRoute,
                                                             SignalJunctionChaos,
-                                                            SignalJunctionLeadingVehicleCrossingRedTrafficLight,
+                                                            FollowingLeadingVehicleInLowSpeed,
                                                             SignalJunctionObstacleCrossingGreenTrafficLight,
-                                                            SignalJunctionCommandGiven)
+                                                            SignalJunctionMakingTurn)
 
 
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import (CollisionTest,
@@ -60,10 +60,10 @@ INITIAL_SECONDS_DELAY = 5.0
 
 SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
     "Scenario1": ControlLoss,
-    "Scenario2": SignalJunctionCommandGiven,
+    "Scenario2": SignalJunctionMakingTurn,
     "Scenario3": SignalJunctionChaos,
     "Scenario4": VehicleTurningRoute,
-    "Scenario5": SignalJunctionLeadingVehicleCrossingRedTrafficLight,
+    "Scenario5": FollowingLeadingVehicleInLowSpeed,
     "Scenario6": SignalJunctionObstacleCrossingGreenTrafficLight,
     'Scenario7': DynamicObjectCrossing,
 }
@@ -164,7 +164,7 @@ def compare_scenarios(scenario_choice, existent_scenario):
             dy = float(pos_choice['y']) - float(pos_existent['y'])
             dz = float(pos_choice['z']) - float(pos_existent['z'])
             dist_position = math.sqrt(dx * dx + dy * dy + dz * dz)
-            dyaw = float(pos_choice['yaw']) - float(pos_choice['yaw'])
+            dyaw = float(pos_choice['yaw']) - float(pos_existent['yaw'])
             dist_angle = math.sqrt(dyaw * dyaw)
             if dist_position < TRIGGER_THRESHOLD and dist_angle < TRIGGER_ANGLE_THRESHOLD:
                 return True

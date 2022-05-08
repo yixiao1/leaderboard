@@ -32,12 +32,6 @@ class Waypointer:
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)
 
-        #tl_dist_to_last_wp = None
-        #try:
-        #    next_tl, tl_dist_to_last_wp= self.get_next_traffic_light(current_location)
-        #except:
-        #    pass
-
         next_vec_in_global = self.gps_to_location(next_gps) - self.gps_to_location(gnss_data)
         compass = 0.0 if np.isnan(imu_data[-1]) else imu_data[-1]
         ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
