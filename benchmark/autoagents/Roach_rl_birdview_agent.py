@@ -14,6 +14,7 @@ from enum import Enum
 import carla
 import os
 import torch
+import math
 from srunner.scenariomanager.timer import GameTime
 from queue import Queue
 import json
@@ -92,6 +93,8 @@ class Roach_rl_birdview_agent(object):
             self.attention_save_path = save_attention
             self.att_count = 0
 
+        self.first_vehicle_actor_loc=None
+
     def setup(self, path_to_conf_file):
         exp_dir = os.path.join('/', os.path.join(*path_to_conf_file.split('/')[:-1]))
         yaml_conf, checkpoint_number, _ = checkpoint_parse_configuration_file(path_to_conf_file)
@@ -160,11 +163,45 @@ class Roach_rl_birdview_agent(object):
 
         input_data = copy.deepcopy(inputs_data)
 
+        print(self.att_count)
+
         policy_input = self._wrapper_class.process_obs(input_data[-1], self._wrapper_kwargs['input_states'], train=False)
 
         actions, _, _, _, _, _ = self._policy.forward(
             policy_input, deterministic=True, clip_action=True)
         control = self._wrapper_class.process_act(actions, self._wrapper_kwargs['acc_as_action'], train=False)
+
+        history_queue = self._obs_managers._history_queue
+        vehicles, walkers, tl_green, tl_yellow, tl_red, _ = history_queue[-1]
+        if vehicles:
+            for actor_transform, _,_ in vehicles:
+                if not self.first_vehicle_actor_loc:
+                    self.first_vehicle_actor_loc = actor_transform.location
+
+                ego_location = self._ego_vehicle.get_transform().location
+                vec_ego_actor_in_global = actor_transform.location - ego_location
+                compass = 0.0 if np.isnan(inputs_data[-1]['IMU'][1][-1]) else inputs_data[-1]['IMU'][1][-1]
+                ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
+                loc_in_ev = self.waypointer.vec_global_to_ref(vec_ego_actor_in_global, ref_rot_in_global)
+
+                print(loc_in_ev.x, loc_in_ev.y, loc_in_ev.z)
+                vec_actor_move = actor_transform.location - self.first_vehicle_actor_loc
+                actor_move_dist = math.sqrt(vec_actor_move.x **2 + vec_actor_move.y**2)
+                print(actor_move_dist)
+
+                ego_wp =self.map.get_waypoint(ego_location)
+
+                dist_ego_actor = math.sqrt(loc_in_ev.x**2+loc_in_ev.y**2)
+
+                # the actor within 20 meters is moving and in the front to the ego
+                if actor_move_dist>0.1 and loc_in_ev.x>0.0 and (dist_ego_actor)<20.0:
+                    # front right in image
+                    if loc_in_ev.y > 0.0:
+                        if 225.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) < 315.0:
+                            control = self.takeout_control()
+                    elif loc_in_ev.y < 0.0:
+                        if 45.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) < 135.0:
+                            control = self.takeout_control()
 
         steer = control.steer
         throttle = control.throttle
@@ -176,12 +213,7 @@ class Roach_rl_birdview_agent(object):
             last_input = input_data[-1]['rgb_central'][1]
             last_input = Image.fromarray(last_input)
 
-            #att = np.delete(self.cmap_2(np.abs(att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
-            #    att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
-            #att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
-            #    (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
-            #last_att = Image.fromarray(att)
-            #blend_im = Image.blend(last_input, last_att, 0.7)
+            """
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
@@ -200,40 +232,39 @@ class Roach_rl_birdview_agent(object):
             else:
                 raise RuntimeError()
 
-            """
-            elif float(cmd) == 5.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_left.png'))
-
-            elif float(cmd) == 6.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_right.png'))
-            """
-
-            command_sign = command_sign.resize((390, 120))
+            command_sign = command_sign.resize((260, 80))
 
             mat = Image.new('RGB', (
                 last_input_ontop.width + last_input.width, max(last_input_ontop.height, last_input.height)),
                             (0, 0, 0))
-            mat.paste(command_sign, (last_input_ontop.width + 255, last_input.height + 20))
+            mat.paste(command_sign, (last_input_ontop.width + 450 , last_input.height + 20))
 
             mat.paste(last_input_ontop, (0, 0))
             mat.paste(last_input, (last_input_ontop.width, 0))
-            #mat.paste(blend_im, (last_input_ontop.width, last_input.height))
+            birdview = Image.fromarray(input_data[-1]['birdview']['rendered']).resize(((last_input_ontop.height-last_input.height),
+                                                                  (last_input_ontop.height-last_input.height)))
+            mat.paste(birdview, (last_input_ontop.width, last_input.height))
 
             draw_mat = ImageDraw.Draw(mat)
             font = ImageFont.truetype(os.path.join(os.getcwd(), 'signs', 'arial.ttf'), 20)
-            draw_mat.text((last_input_ontop.width + 60, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 240, last_input_ontop.height - 30),
                           str("Steer " + "%.3f" % steer), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 270, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 410, last_input_ontop.height - 30),
                           str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 480, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 580, last_input_ontop.height - 30),
                           str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
-            draw_mat.text((last_input_ontop.width + 675, last_input_ontop.height - 30),
+            draw_mat.text((last_input_ontop.width + 740, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
-            mat = mat.resize((650, 225))
+            #mat = mat.resize((650, 225))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
+            
+            """
 
             data = inputs_data[-1]['can_bus'][1]
             speed_data = inputs_data[-1]['SPEED'][1]
+
+            image = last_input.resize((600, 170))
+            image.save(os.path.join(self.attention_save_path, 'rgb_central' + '%06d.png' % self.att_count))
 
             ## TODO: HARDCODING
             for key, value in speed_data.items():
@@ -242,7 +273,7 @@ class Roach_rl_birdview_agent(object):
                 else:
                     data.update({key: value})
 
-            with open(os.path.join(self.attention_save_path, 'can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
+            with open(os.path.join(self.attention_save_path, 'cmd_fix_can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
                 jsonObj = {}
                 jsonObj.update(data)
                 fo.seek(0)
@@ -287,6 +318,19 @@ class Roach_rl_birdview_agent(object):
         return input_dict
 
     def stopping_and_wait(self):
+        """
+        The ego stops and waits until the input buffer is full
+        :return:  control
+        """
+        control = carla.VehicleControl()
+        control.steer = 0.0
+        control.throttle = 0.0
+        control.brake = 1.0
+        control.hand_brake = False
+
+        return control
+
+    def takeout_control(self):
         """
         The ego stops and waits until the input buffer is full
         :return:  control
