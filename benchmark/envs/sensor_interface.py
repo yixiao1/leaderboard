@@ -127,6 +127,7 @@ class SpeedometerReader(BaseReader):
         speed_dict = {}
         speed_dict.update({'speed': self._get_forward_speed(transform=transform, velocity=velocity)})
 
+        """
         scenario_speed_dict = {}
         for scenario_name, actors in self._other_actors_dict.items():
             scenario_speed_dict[scenario_name]={}
@@ -135,6 +136,7 @@ class SpeedometerReader(BaseReader):
                     scenario_speed_dict[scenario_name].update({'speed_'+actor_id: self._get_forward_speed(transform=actors[actor_id].get_transform(),
                                                                                   velocity=actors[actor_id].get_velocity())})
         speed_dict.update(scenario_speed_dict)
+        """
         return speed_dict
 
 
@@ -166,6 +168,8 @@ class CanbusReader(BaseReader):
             'reverse': control.reverse
         }
 
+        """
+
         scenario_canbus_dict = {}
         for scenario_name, actors in self._other_actors_dict.items():
             scenario_canbus_dict[scenario_name]={}
@@ -182,6 +186,9 @@ class CanbusReader(BaseReader):
                     scenario_canbus_dict[scenario_name].update({actor_id + '_wp_rotation': [actor_waypoint.transform.rotation.pitch, actor_waypoint.transform.rotation.yaw,
                                                                      actor_waypoint.transform.rotation.roll]})
         can_bus_dict.update(scenario_canbus_dict)
+        
+        """
+
         return can_bus_dict
 
 class CallBack(object):

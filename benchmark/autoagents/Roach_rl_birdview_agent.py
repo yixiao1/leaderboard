@@ -172,15 +172,17 @@ class Roach_rl_birdview_agent(object):
         history_queue = self._obs_managers._history_queue
         vehicles, walkers, tl_green, tl_yellow, tl_red, _ = history_queue[-1]
         if vehicles:
+            ego_location = self._ego_vehicle.get_transform().location
             for actor_transform, _,_ in vehicles:
-                if not self.first_vehicle_actor_loc:
-                    self.first_vehicle_actor_loc = actor_transform.location
-
-                ego_location = self._ego_vehicle.get_transform().location
                 vec_ego_actor_in_global = actor_transform.location - ego_location
                 compass = 0.0 if np.isnan(inputs_data[-1]['IMU'][1][-1]) else inputs_data[-1]['IMU'][1][-1]
                 ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
                 loc_in_ev = self.waypointer.vec_global_to_ref(vec_ego_actor_in_global, ref_rot_in_global)
+                if loc_in_ev.x < 0.0 or abs(loc_in_ev.y) > 6.0:
+                    continue
+
+                if not self.first_vehicle_actor_loc:
+                    self.first_vehicle_actor_loc = actor_transform.location
 
                 vec_actor_move = actor_transform.location - self.first_vehicle_actor_loc
                 actor_move_dist = math.sqrt(vec_actor_move.x **2 + vec_actor_move.y**2)
@@ -190,13 +192,15 @@ class Roach_rl_birdview_agent(object):
                 dist_ego_actor = math.sqrt(loc_in_ev.x**2+loc_in_ev.y**2)
 
                 # the actor within 20 meters is moving and in the front to the ego
-                if actor_move_dist>0.5 and loc_in_ev.x>0.0 and (dist_ego_actor)<20.0:
+                if actor_move_dist>0.5 and (dist_ego_actor)<20.0:
                     # front right in image
-                    if loc_in_ev.y > 0.0:
-                        if 225.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 315.0 or abs(loc_in_ev.y)<ego_wp.lane_width*0.5:
+                    if loc_in_ev.y >= 0.0:
+                        if int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(225, 315) or \
+                                abs(loc_in_ev.y)<ego_wp.lane_width*0.6:
                             control = self.takeout_control()
                     elif loc_in_ev.y < 0.0:
-                        if 45.0 < (actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw)%360.0 < 135.0 or abs(loc_in_ev.y)<ego_wp.lane_width*0.5:
+                        if int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(45, 135) or \
+                                abs(loc_in_ev.y)<ego_wp.lane_width*0.6:
                             control = self.takeout_control()
 
         steer = control.steer
@@ -259,26 +263,45 @@ class Roach_rl_birdview_agent(object):
             
             #"""
 
-            data = inputs_data[-1]['can_bus'][1]
             speed_data = inputs_data[-1]['SPEED'][1]
 
             image = last_input.resize((600, 170))
             image.save(os.path.join(self.attention_save_path, 'rgb_central' + '%06d.png' % self.att_count))
 
             ## TODO: HARDCODING
-            for key, value in speed_data.items():
-                if key in data.keys():  # If it exist, add it
-                    data[key].update(value)
-                else:
-                    data.update({key: value})
+            #for key, value in speed_data.items():
+            #    if key in data.keys():  # If it exist, add it
+            #        data[key].update(value)
+            #    else:
+            #        data.update({key: value})
 
-            data.update({'steer': np.nan_to_num(steer)})
-            data.update({'throttle': np.nan_to_num(throttle)})
-            data.update({'brake': np.nan_to_num(brake)})
+
+            can_bus_dict = {
+                'steer': np.nan_to_num(steer),
+                'throttle': np.nan_to_num(throttle),
+                'brake': np.nan_to_num(brake),
+                'hand_brake': control.hand_brake,
+                'reverse': control.reverse,
+                'speed': speed_data['speed'],
+                'direction': float(cmd)
+            }
+
+            if throttle == 0.0:
+                if brake <= 1.0:
+                    can_bus_dict['acceleration'] = -1 * brake
+                else:
+                    raise RuntimeError
+            elif brake == 0.0:
+                if throttle <= 1.0:
+                    can_bus_dict['acceleration'] = throttle
+                else:
+                    raise RuntimeError
+            else:
+                raise RuntimeError
 
             with open(os.path.join(self.attention_save_path, 'cmd_fix_can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
                 jsonObj = {}
-                jsonObj.update(data)
+                jsonObj.update(can_bus_dict)
                 fo.seek(0)
                 fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
                 fo.close()
