@@ -252,7 +252,10 @@ class Roach_rl_birdview_agent(object):
             draw_mat.text((last_input_ontop.width + 740, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
             #mat = mat.resize((650, 225))
-            mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
+
+            if not os.path.exists(os.path.join(self.attention_save_path,'check')):
+                os.makedirs(os.path.join(self.attention_save_path,'check'))
+            mat.save(os.path.join(self.attention_save_path, 'check', str(self.att_count).zfill(6) + '.png'))
             
             #"""
 
@@ -268,6 +271,10 @@ class Roach_rl_birdview_agent(object):
                     data[key].update(value)
                 else:
                     data.update({key: value})
+
+            data.update({'steer': np.nan_to_num(steer)})
+            data.update({'throttle': np.nan_to_num(throttle)})
+            data.update({'brake': np.nan_to_num(brake)})
 
             with open(os.path.join(self.attention_save_path, 'cmd_fix_can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
                 jsonObj = {}
