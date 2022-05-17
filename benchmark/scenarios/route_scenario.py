@@ -34,7 +34,7 @@ from srunner.scenarios.basic_scenario import BasicScenario
 from srunner.scenarios.control_loss_YiXiao import ControlLoss
 from srunner.scenarios.follow_leading_vehicle_YiXiao import FollowLeadingVehicleWithObstacle
 from srunner.scenarios.object_crash_vehicle_YiXiao import DynamicObjectCrossing
-from srunner.scenarios.selfDefined_scenarios_YiXiao import (VehicleTurningRoute,
+from srunner.scenarios.selfDefined_scenarios_YiXiao import (VehicleTurningAndStoppingRoute,
                                                             SignalJunctionChaos,
                                                             FollowingLeadingVehicleInLowSpeed,
                                                             SignalJunctionObstacleCrossingGreenTrafficLight,
@@ -62,10 +62,10 @@ SELFDEFINED_NUMBER_CLASS_TRANSLATION = {
     "Scenario1": ControlLoss,
     "Scenario2": SignalJunctionMakingTurn,
     "Scenario3": SignalJunctionChaos,
-    "Scenario4": VehicleTurningRoute,
+    "Scenario4": VehicleTurningAndStoppingRoute,
     "Scenario5": FollowingLeadingVehicleInLowSpeed,
     "Scenario6": SignalJunctionObstacleCrossingGreenTrafficLight,
-    'Scenario7': DynamicObjectCrossing,
+    'Scenario7': DynamicObjectCrossing
 }
 
 def oneshot_behavior(name, variable_name, behaviour):

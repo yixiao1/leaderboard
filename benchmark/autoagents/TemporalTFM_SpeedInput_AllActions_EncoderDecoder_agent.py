@@ -156,9 +156,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
             for i in range(g_conf.ENCODER_INPUT_FRAMES_NUM)]
 
-        last_action_outputs = all_action_outputs[-1]
-
-        steer, throttle, brake = last_action_outputs
+        steer, throttle, brake = all_action_outputs[-1]
         control.steer = float(steer)
         control.throttle = float(throttle)
         control.brake = float(brake)
@@ -267,6 +265,8 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
                 fo.close()
 
             self.att_count += 1
+
+        last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy()
 
         return control, last_action_outputs
 

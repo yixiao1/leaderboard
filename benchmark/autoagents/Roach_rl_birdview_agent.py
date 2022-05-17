@@ -36,6 +36,8 @@ from network.models.architectures.Roach_rl_birdview.birdview.chauffeurnet import
 import network.models.architectures.Roach_rl_birdview.utils.transforms as trans_utils
 from network.models.architectures.Roach_rl_birdview.utils.traffic_light import TrafficLightHandler
 
+from agents.navigation.controller import PIDLongitudinalController
+
 def checkpoint_parse_configuration_file(filename):
 
     with open(filename, 'r') as f:
@@ -93,7 +95,14 @@ class Roach_rl_birdview_agent(object):
             self.attention_save_path = save_attention
             self.att_count = 0
 
-        self.first_vehicle_actor_loc=None
+        self.register_actor=[]
+
+        #self.args_longitudinal = {
+        #    'K_P': 1.0,
+        #    'K_D': 0.0,
+        #    'K_I': 1.0,
+        #    'dt': 0.1}
+
 
     def setup(self, path_to_conf_file):
         exp_dir = os.path.join('/', os.path.join(*path_to_conf_file.split('/')[:-1]))
@@ -128,6 +137,7 @@ class Roach_rl_birdview_agent(object):
     def set_ego_vehicle(self, ego_vehicle):
         self._ego_vehicle=ego_vehicle
         self._obs_managers.attach_ego_vehicle(self._ego_vehicle, self._route_plan)
+        #self._lon_controller = PIDLongitudinalController(self._ego_vehicle, **self.args_longitudinal)
 
     def sensors(self):  # pylint: disable=no-self-use
         """
@@ -155,6 +165,14 @@ class Roach_rl_birdview_agent(object):
 
         return sensors
 
+    def calculate_velocity(self,actor):
+        """
+        Method to calculate the velocity of a actor
+        """
+        velocity_squared = actor.get_velocity().x ** 2
+        velocity_squared += actor.get_velocity().y ** 2
+        return math.sqrt(velocity_squared)
+
     def run_step(self, inputs_data):
         """
         Execute one step of navigation.
@@ -169,39 +187,67 @@ class Roach_rl_birdview_agent(object):
             policy_input, deterministic=True, clip_action=True)
         control = self._wrapper_class.process_act(actions, self._wrapper_kwargs['acc_as_action'], train=False)
 
+        #"""
+        ## This part is for collecting curated scenario data
+        ego_location = self._ego_vehicle.get_transform().location
+        ego_wp = self.map.get_waypoint(ego_location)
+
+
         history_queue = self._obs_managers._history_queue
+        # get the latest candidate obstacles in history
         vehicles, walkers, tl_green, tl_yellow, tl_red, _ = history_queue[-1]
-        if vehicles:
-            ego_location = self._ego_vehicle.get_transform().location
-            for actor_transform, _,_ in vehicles:
+        objects_within_20m_radius = []
+        if vehicles+walkers:
+            for actor_transform, _,_, actor in vehicles+walkers:
                 vec_ego_actor_in_global = actor_transform.location - ego_location
                 compass = 0.0 if np.isnan(inputs_data[-1]['IMU'][1][-1]) else inputs_data[-1]['IMU'][1][-1]
                 ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
                 loc_in_ev = self.waypointer.vec_global_to_ref(vec_ego_actor_in_global, ref_rot_in_global)
-                if loc_in_ev.x < 0.0 or abs(loc_in_ev.y) > 6.0:
+                if loc_in_ev.x < 0.0 or abs(loc_in_ev.y) > 10.0:
                     continue
+                dist_ego_actor = math.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2)
+                if dist_ego_actor < 20.0:
+                    objects_within_20m_radius.append([actor, loc_in_ev])
 
-                if not self.first_vehicle_actor_loc:
-                    self.first_vehicle_actor_loc = actor_transform.location
+        if objects_within_20m_radius:
+            for actor, loc_in_ev in objects_within_20m_radius:
+                actor_transform = actor.get_transform()
+                actor_velocity = self.calculate_velocity(actor)
+                if (loc_in_ev.y >= 0.0 and int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(220, 320)) \
+                        or (loc_in_ev.y < 0.0 and int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(40, 140)):
+                    #print('1')
+                    #print('velocity', actor_velocity)
+                    #print('loc_in_ev.y', loc_in_ev.y)
 
-                vec_actor_move = actor_transform.location - self.first_vehicle_actor_loc
-                actor_move_dist = math.sqrt(vec_actor_move.x **2 + vec_actor_move.y**2)
+                    th1 = 1.7 + np.random.uniform(-0.1, 0.0)
+                    th2 = 2.0 + np.random.uniform(-0.2, 0.0)
+                    th3 = 0.8 + np.random.uniform(-0.05, 0.0)
+                    th4 = 1.2 + np.random.uniform(-0.1, 0.00)
 
-                ego_wp =self.map.get_waypoint(ego_location)
+                    th5 = 1.2 + np.random.uniform(0.0, 0.1)
+                    th6 = 1.0 + np.random.uniform(0.0, 0.1)
+                    if -ego_wp.lane_width * th2 < loc_in_ev.y< -ego_wp.lane_width * th1 or ego_wp.lane_width * th3 < loc_in_ev.y< ego_wp.lane_width * th4:
+                        if th6 <=actor_velocity < th5:
+                            control = self.takeout_control(0.3+np.random.uniform(-0.1, 0.1))
+                        elif actor_velocity >= th5:
+                            control = self.takeout_control(0.5+np.random.uniform(-0.1, 0.1))
 
-                dist_ego_actor = math.sqrt(loc_in_ev.x**2+loc_in_ev.y**2)
+                    elif -ego_wp.lane_width * th1 < loc_in_ev.y < ego_wp.lane_width * th3:
+                        if th6 <=actor_velocity < th4:
+                            control = self.takeout_control(0.8+np.random.uniform(-0.1, 0.1))
+                        elif actor_velocity >= th4:
+                            control = self.takeout_control(1.0)
+                elif (loc_in_ev.y >= 0.0 and int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(40, 140)) \
+                        or (loc_in_ev.y < 0.0 and int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(220, 320)):
 
-                # the actor within 20 meters is moving and in the front to the ego
-                if actor_move_dist>0.5 and (dist_ego_actor)<20.0:
-                    # front right in image
-                    if loc_in_ev.y >= 0.0:
-                        if int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(225, 315) or \
-                                abs(loc_in_ev.y)<ego_wp.lane_width*0.6:
-                            control = self.takeout_control()
-                    elif loc_in_ev.y < 0.0:
-                        if int(actor_transform.rotation.yaw - ego_wp.transform.rotation.yaw) % 360.0 in range(45, 135) or \
-                                abs(loc_in_ev.y)<ego_wp.lane_width*0.6:
-                            control = self.takeout_control()
+                    #print('2')
+                    #print('velocity', actor_velocity)
+                    #print('loc_in_ev.y', loc_in_ev.y)
+
+                    if -ego_wp.lane_width * (0.8+ np.random.uniform(-0.1, 0.1)) < loc_in_ev.y < ego_wp.lane_width * (0.8+ np.random.uniform(-0.1, 0.05)):
+                            control = self.takeout_control(1.0)
+
+        #"""
 
         steer = control.steer
         throttle = control.throttle
@@ -306,6 +352,8 @@ class Roach_rl_birdview_agent(object):
                 fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
                 fo.close()
 
+            #"""
+
             self.att_count+=1
 
         return control
@@ -356,18 +404,17 @@ class Roach_rl_birdview_agent(object):
 
         return control
 
-    def takeout_control(self):
+    def takeout_control(self, brake=None):
         """
         The ego stops and waits until the input buffer is full
         :return:  control
         """
+        print('  Dangerous!! Taking out control!!')
         control = carla.VehicleControl()
         control.steer = 0.0
         control.throttle = 0.0
-        control.brake = 1.0
+        control.brake = brake
         control.hand_brake = False
-        print('  Dangerous!! Taking out control!!')
-
         return control
 
 
