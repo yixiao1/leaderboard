@@ -107,10 +107,11 @@ def compute_relative_angle(vehicle_loc,vehicle_rot, waypoint_loc):
 
     return relative_angle
 
-def compute_values(data_paths, save_path, scenario_name, value_name):
-    plt.figure()
-    colors_list=['b','g','m', 'c', 'y']
+def compute_values(data_paths, save_path, scenario_name, value_name, make_plot=True):
     color_id = 0
+    colors_list=['b','g','m', 'c', 'y']
+    if make_plot:
+        plt.figure()
     for data_path in data_paths:
         print("  ")
         print("----------- ", save_path.split('/')[-1], "----------- ")
@@ -126,12 +127,13 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
                     ego_speeds.append(np.clip(round(data['speed'], 1), 0.0, None))
                     #obstacle_speed.append(np.clip(round(data[scenario_name]['speed_obstacle1'], 1), 0.0, None))
 
-            plt.plot(range(len(json_path_list)), ego_speeds, '-', color=colors_list[color_id])
-            #plt.plot(range(len(json_path_list)), obstacle_speed, '-', color=colors_list[color_id+1])
-            plt.xlim([0, len(json_path_list)])
-            #plt.xlim([200, 600])
-            plt.title('Driving Velocity')
-            #plt.ylim([3, 10])
+            if make_plot:
+                plt.plot(range(len(json_path_list)), ego_speeds, '-', color=colors_list[color_id])
+                #plt.plot(range(len(json_path_list)), obstacle_speed, '-', color=colors_list[color_id+1])
+                plt.xlim([0, len(json_path_list)])
+                #plt.xlim([200, 600])
+                plt.title('Driving Velocity')
+                #plt.ylim([3, 10])
 
             long_comfort=[]
             for i in range(len(ego_speeds)-1):
@@ -154,9 +156,11 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
                 ego_loc, ego_rot = ego_info[i]
                 next_wp = wp[i+1]
                 relative_angle.append(compute_relative_angle(ego_loc, ego_rot, next_wp))
-            plt.xlim([0, len(json_path_list)-1])
-            plt.plot(range(len(json_path_list)-1), relative_angle, '-', color=colors_list[color_id])
-            plt.title('Relative Angle')
+
+            if make_plot:
+                plt.xlim([0, len(json_path_list)-1])
+                plt.plot(range(len(json_path_list)-1), relative_angle, '-', color=colors_list[color_id])
+                plt.title('Relative Angle')
 
             lat_comfort = []
             for i in range(len(relative_angle) - 1):
@@ -171,9 +175,10 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
                 with open(json_file) as json_:
                     data = json.load(json_)
                     acc.append(data['throttle'] if not data['throttle'] == 0.0 else -data['brake'])
-            plt.xlim([0, len(json_path_list)])
-            plt.plot(range(len(json_path_list)), acc, '-', color=colors_list[color_id])
-            plt.title('Acceleration Prediction')
+            if make_plot:
+                plt.xlim([0, len(json_path_list)])
+                plt.plot(range(len(json_path_list)), acc, '-', color=colors_list[color_id])
+                plt.title('Acceleration Prediction')
 
         elif value_name == 'steering':
             steer=[]
@@ -181,9 +186,10 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
                 with open(json_file) as json_:
                     data = json.load(json_)
                     steer.append(data['steer'])
-            plt.xlim([0, len(json_path_list)])
-            plt.plot(range(len(json_path_list)), steer, '-', color=colors_list[color_id])
-            plt.title('Steering Value Prediction')
+            if make_plot:
+                plt.xlim([0, len(json_path_list)])
+                plt.plot(range(len(json_path_list)), steer, '-', color=colors_list[color_id])
+                plt.title('Steering Value Prediction')
 
         elif value_name == 'dist':
             distances=[]
@@ -214,13 +220,16 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
             sample_num_back=20
 
             leading_stop_frame = x[leading_stop_id]
-            plt.axvline(x = leading_stop_frame, color=colors_list[color_id])
 
-            plt.title('Distance to Leading Vehicle')
-            plt.plot(x[leading_stop_id-sample_num_front:leading_stop_id+sample_num_back],
-                     distances[leading_stop_id-sample_num_front:leading_stop_id+sample_num_back], color=colors_list[color_id])
-            #plt.xlim([x[0], x[-1]])
-            #plt.ylim([7, 20])
+
+            if make_plot:
+                plt.axvline(x = leading_stop_frame, color=colors_list[color_id])
+
+                plt.title('Distance to Leading Vehicle')
+                plt.plot(x[leading_stop_id-sample_num_front:leading_stop_id+sample_num_back],
+                         distances[leading_stop_id-sample_num_front:leading_stop_id+sample_num_back], color=colors_list[color_id])
+                #plt.xlim([x[0], x[-1]])
+                #plt.ylim([7, 20])
 
         elif value_name == 'relative_speed':
             relative_speed = []
@@ -244,12 +253,14 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
 
             leading_stop_id = leading_actor_speeds[100:].index(0.0)
             leading_stop_frame = x[leading_stop_id]
-            plt.axvline(x=leading_stop_frame, color=colors_list[color_id])
-            plt.plot(x,relative_speed, '-', color=colors_list[color_id])
-            plt.plot(range(len(json_path_list)), np.zeros(len(json_path_list)).tolist(), color='k')
-            plt.xlim([x[0], x[-1]])
-            plt.title('Relative Speed')
-            #plt.ylim([-3, 4])
+
+            if make_plot:
+                plt.axvline(x=leading_stop_frame, color=colors_list[color_id])
+                plt.plot(x,relative_speed, '-', color=colors_list[color_id])
+                plt.plot(range(len(json_path_list)), np.zeros(len(json_path_list)).tolist(), color='k')
+                plt.xlim([x[0], x[-1]])
+                plt.title('Relative Speed')
+                #plt.ylim([-3, 4])
 
         elif value_name == 'ttc':
             TTC = []
@@ -296,24 +307,25 @@ def compute_values(data_paths, save_path, scenario_name, value_name):
             y_smooth = f(x_new)
             x_new = [int(x) for x in x_new]
             leading_stop_frame_in_ttc = x_new.index(leading_stop_frame)
-            #plt.plot(x, y, color=colors_list[color_id])
-            #plt.plot(x, np.zeros(len(x)).tolist(), color='k')
-            plt.title('Time to Collision')
-            plt.plot(x_new[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back],
-                     y_smooth[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back], color=colors_list[color_id])
-            plt.plot(x_new[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back],
-                     np.zeros(len(x_new[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back])).tolist(), color='k')
-            #plt.ylim([0, 100])
+
+            if make_plot:
+                #plt.plot(x, y, color=colors_list[color_id])
+                #plt.plot(x, np.zeros(len(x)).tolist(), color='k')
+                plt.title('Time to Collision')
+                plt.plot(x_new[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back],
+                         y_smooth[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back], color=colors_list[color_id])
+                plt.plot(x_new[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back],
+                         np.zeros(len(x_new[leading_stop_frame_in_ttc-sample_num_front: leading_stop_frame_in_ttc+sample_num_back])).tolist(), color='k')
+                #plt.ylim([0, 100])
 
         color_id += 1
 
+    if make_plot:
+        plt.xlabel('frame id')
+        plt.ylabel('')
 
-
-    plt.xlabel('frame id')
-    plt.ylabel('')
-
-    plt.savefig(os.path.join(save_path + '_'+value_name+'.png'))
-    plt.close()
+        plt.savefig(os.path.join(save_path + '_'+value_name+'.png'))
+        plt.close()
 
 
 
@@ -379,31 +391,97 @@ def draw_trajectory_debug(data_paths, save_path, world):
 
 
 
-make_plots = True
+def compute_comfort_values(data_path):
+    routes = glob.glob(os.path.join(data_path, '*'))
+    sort_nicely(routes)
+    long_comfort_values=[]
+    lat_comfort_values = []
+    for route_path in routes:
+        json_path_list = glob.glob(os.path.join(route_path, '0','can_bus*.json'))
+        sort_nicely(json_path_list)
+
+        ego_speeds = []
+        ego_info = []
+        wp = []
+        for json_file in json_path_list:
+            with open(json_file) as json_:
+                data = json.load(json_)
+                ego_speeds.append(np.clip(round(data['speed'], 1), 0.0, None))
+                ego_info.append((data['ego_location'], data['ego_rotation']))
+                wp.append(data['ego_wp_location'])
+
+        long_comfort = []
+        for i in range(len(ego_speeds) - 1):
+            long_comfort_value = abs(ego_speeds[i + 1] - ego_speeds[i]) / 0.1
+            long_comfort.append(long_comfort_value)
+
+        #print('Comfort Value: long', np.mean(long_comfort), np.std(long_comfort))
+        long_comfort_values += long_comfort
+
+        relative_angle = []
+        for i in range(len(ego_info) - 1):
+            ego_loc, ego_rot = ego_info[i]
+            next_wp = wp[i + 1]
+            relative_angle.append(compute_relative_angle(ego_loc, ego_rot, next_wp))
+
+        lat_comfort = []
+        for i in range(len(relative_angle) - 1):
+            lat_comfort_value = abs(relative_angle[i + 1] - relative_angle[i]) / 0.1
+            lat_comfort.append(lat_comfort_value)
+
+        #print('Comfort Value: lat', np.mean(lat_comfort), np.std(lat_comfort))
+
+        lat_comfort_values += lat_comfort
+
+    print(' longtitude:', np.mean(long_comfort_values), np.std(long_comfort_values))
+    print(' ')
+    print(' lateral:', np.mean(lat_comfort_values), np.std(lat_comfort_values))
+    print(' ')
+
+
+
+
+
+
+
+
+make_plots = False
 make_trajectries = False
+analysis_comfort_values =True
+
+if analysis_comfort_values:
+    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newweathertown_Town02')
+    model_name = '20220405_SingleFrame_Roach19Hours_T1_seed1_1_finetune_cmd_600000_10FPS'
+    car_type= ['carlacola']
+    leading_speed= ['2mps', '3mps', '4mps', '5mps']
+
+    for car in car_type:
+        for sp in leading_speed:
+            data_path = os.path.join(root_dir, model_name, car, sp)
+            print('-----------------------------------------------------')
+            print(car, sp)
+            compute_comfort_values(data_path)
+
 
 if make_plots:
     value_names= ['speed','relative_angle']
-    route_id = range(14)
-    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newSingleweathertown_Town02_test/')
+    route_id = range(28)
+    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newweathertown_Town02')
+    car_type= 'carlacola'
+    leading_speed='2mps'
 
     for i in route_id:
         route_name = 'RouteScenario_' + str(i) + '_Scenario5'
         for value_name in value_names:
             data_paths = [
-                #root_dir+'20220405_SingleFrame_Roach19Hours_T1_seed1_1_500000_10FPS/' + route_name + '/0',
-                #root_dir+'20220405_FramesStacking_5Frames_Roach19Hours_T1_seed1_1_500000_10FPS/' + route_name + '/0',
-                #root_dir+'20220405_TempoarlTFM_En_5Frames_Roach19Hours_T1_seed1_1_mask_500000_10FPS/' + route_name + '/0',
-                root_dir+'20220405_TempoarlTFM_En_5Frames_LastAction_NoToken_Roach19Hours_T1_seed1_1_nomask_500000_10FPS/' + route_name + '/0',
-                #root_dir+'20220405_TempoarlTFM_En_10Frames_LastAction_NoToken_Roach19Hours_T1_seed1_1_nomask_500000_10FPS/' + route_name + '/0',
-                #root_dir+'20220405_TempoarlTFM_En_10Frames_Roach19Hours_T1_seed1_1_mask_100000_10FPS/' + route_name + '/0',
-                #root_dir+'20220405_TempoarlTFM_EnDe_5Frames_Roach19Hours_T1_seed1_1_nomask_500000_10FPS/' + route_name + '/0',
+                os.path.join(root_dir,'20220405_SingleFrame_Roach19Hours_T1_seed1_1_finetune_cmd_600000_10FPS', car_type, leading_speed, route_name,'0'),
+                #os.path.join(root_dir,'20220405_TempoarlTFM_En_5Frames_LastAction_NoToken_Roach19Hours_T1_seed1_1_nomask_finetune_cmd_650000_10FPS', car_type, leading_speed, route_name,'0'),
                 #root_dir+'20220405_Roach_rl_birdview_11833344_10FPS/' + route_name + '/0'
                 ]
-            save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newSingleweathertown_Town02_test',route_name)
+            save_path = os.path.join(root_dir, car_type+'_'+leading_speed+'_'+route_name)
             compute_values(data_paths, save_path,
                     'SignalJunctionLeadingVehicleCrossingRedTrafficLight',
-                    value_name)
+                    value_name, make_plot=False)
 
 if make_trajectries:
     #params = {'docker_name': 'carlasim/carla:0.9.13', 'gpu': 0, 'quality_level': 'Epic'}
