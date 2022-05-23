@@ -32,6 +32,8 @@ from dataloaders.transforms import encode_directions_4, encode_directions_6, inv
 from benchmark.utils.waypointer import Waypointer
 from benchmark.envs.data_writer import Writer
 
+from pytorch_grad_cam.pytorch_grad_cam.grad_cam import GradCAM
+
 
 def checkpoint_parse_configuration_file(filename):
 
@@ -83,6 +85,7 @@ class FramesStacking_SpeedInput_agent(object):
         self.wallclock_t0 = None
 
         if save_attention:
+            self.cmap_2 = plt.get_cmap('jet')
             self.attention_save_path = save_attention
             self.att_count = 0
 
@@ -171,19 +174,37 @@ class FramesStacking_SpeedInput_agent(object):
             if not os.path.exists(self.attention_save_path):
                 os.makedirs(self.attention_save_path)
 
-            last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
+            rgb_img = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
                                            g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
-            cmap_2 = plt.get_cmap('jet')
-
-            att = np.delete(cmap_2(np.abs(attention_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
-                attention_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
-            att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
-                (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
-            last_att = Image.fromarray(att)
-            last_input = last_input.transpose(1, 2, 0) * 255
+            last_input = rgb_img.transpose(1, 2, 0) * 255
             last_input = last_input.astype(np.uint8)
             last_input = Image.fromarray(last_input)
+
+            target_layers = [self._model._model.encoder_embedding_perception.layer4[-1]]
+            cam = GradCAM(model=self._model._model.encoder_embedding_perception, target_layers=target_layers)
+            input_tensor =  norm_rgb[-1]
+            #targets = [actions_outputs]
+            grayscale_cam = cam(input_tensor=input_tensor)
+            grayscale_cam = grayscale_cam[0, :]
+            att = np.delete(self.cmap_2(grayscale_cam), 3, 2)
+            att = np.array(Image.fromarray((att * 255).astype(np.uint8)))
+            last_att = Image.fromarray(att)
+
             blend_im = Image.blend(last_input, last_att, 0.7)
+
+            #last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
+            #                               g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
+            #cmap_2 = plt.get_cmap('jet')
+
+            #att = np.delete(cmap_2(np.abs(attention_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
+            #    attention_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
+            #att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
+            #    (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
+            #last_att = Image.fromarray(att)
+            #last_input = last_input.transpose(1, 2, 0) * 255
+            #last_input = last_input.astype(np.uint8)
+            #last_input = Image.fromarray(last_input)
+            #blend_im = Image.blend(last_input, last_att, 0.7)
 
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
@@ -252,7 +273,7 @@ class FramesStacking_SpeedInput_agent(object):
                               font=font)
             """
 
-            #mat = mat.resize((420, 180))
+            mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.jpg'))
 
             data = inputs_data[-1]['can_bus'][1]
