@@ -42,7 +42,7 @@ def checkpoint_parse_configuration_file(filename):
            configuration_dict['agent_name']
 
 def get_entry_point():
-    return 'FramesStacking_SpeedInput_agent'
+    return 'LinearProbing_agent'
 
 class Track(Enum):
 
@@ -52,7 +52,7 @@ class Track(Enum):
     SENSORS = 'SENSORS'
     MAP = 'MAP'
 
-class FramesStacking_SpeedInput_agent(object):
+class LinearProbing_agent(object):
 
     """
     Autonomous agent base class. All user agents have to be derived from this class
@@ -99,7 +99,7 @@ class FramesStacking_SpeedInput_agent(object):
         merge_with_yaml(os.path.join(exp_dir, yaml_conf), process_type='drive')
         set_type_of_process('drive', root=os.environ["TRAINING_RESULTS_ROOT"])
 
-        if g_conf.MODEL_TYPE in ['FramesStacking_SpeedLossInput']:
+        if g_conf.MODEL_TYPE in ['Linear_Probing']:
             self._model = Models(g_conf.MODEL_TYPE, g_conf.MODEL_CONFIGURATION)
             if torch.cuda.device_count() > 1 and g_conf.DATA_PARALLEL:
                 print("Using multiple GPUs parallel! ")

@@ -247,7 +247,7 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
             """
 
             #mat = mat.resize((420, 180))
-            mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.png'))
+            mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.jpg'))
 
             data = inputs_data[-1]['can_bus'][1]
             speed_data = inputs_data[-1]['SPEED'][1]

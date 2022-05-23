@@ -327,7 +327,7 @@ class TemporalTFM_SpeedInput_AllActions_agent(object):
                 draw.text((400, 150), str("Brake " + "%.3f" % action[2]), fill=(0, 0, 255), font=font)
                 draw.text((670, 230), str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(0, 0, 255), font=font)
 
-        blend_im.save(os.path.join(self.attention_save_path+'_backbone_attn', str(self.att_count).zfill(6) + '.png'))
+        blend_im.save(os.path.join(self.attention_save_path+'_backbone_attn', str(self.att_count).zfill(6) + '.jpg'))
 
 
     def saving_TxEncoder_attention_maps(self, cat_inputs, attn_weights):
