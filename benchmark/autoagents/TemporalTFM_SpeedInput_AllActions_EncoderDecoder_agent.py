@@ -111,6 +111,11 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         self._model.share_memory()
         self._model.eval()
 
+        if g_conf.ACCELERATION_AS_ACTION:
+            self.latest_actions = [[0.0, 1.0]]
+        else:
+            self.latest_actions = [[0.0, 1.0, 0.0]]
+
     def set_world(self, world):
         self.world=world
         self.map=self.world.get_map()
@@ -332,7 +337,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         #if int(wallclock_diff / 60) % 10 == 0:
         #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
 
-        if len(self.inputs_buffer.queue) <= ((g_conf.ENCODER_INPUT_FRAMES_NUM-1) * g_conf.ENCODER_STEP_INTERVAL):
+        if len(self.inputs_buffer.queue) < ((g_conf.ENCODER_INPUT_FRAMES_NUM-1) * g_conf.ENCODER_STEP_INTERVAL):
             print('=== The agent is stopping and waitting for the input buffer ...')
 
             if g_conf.ACCELERATION_AS_ACTION:
@@ -344,16 +349,21 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             return self.stopping_and_wait()
 
         else:
+            # we add a fake current's action (no use in the model), and stack the current inputs to the end of buffer
+            input_data.update({'actions': self.latest_actions})
+            self.inputs_buffer.put(input_data)
+
             inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue), g_conf.ENCODER_STEP_INTERVAL)]
             #inputs = list(self.inputs_buffer.queue)
             control, actions_outputs = self.run_step(inputs)
             control.manual_gear_shift = False
 
-            input_data.update({'actions': actions_outputs})
+            # we update the current's actions by the prediction
+            input_data.update({'actions': self.latest_actions})
+            self.inputs_buffer.queue[-1] = input_data
 
-            # We pop the first frame of the input buffer and stack the current frame to the end
+            # We pop the first frame of the input buffer
             self.inputs_buffer.get()
-            self.inputs_buffer.put(input_data)
 
             return control
 
