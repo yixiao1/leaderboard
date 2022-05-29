@@ -389,9 +389,17 @@ def draw_trajectory_debug(data_paths, save_path, world):
     trajectories_fig.savefig(os.path.join(save_path + '_' + 'trajectory.png'))
     plt.close()
 
+def inverse_pose(pose):
+    inv_pose = np.eye(3)
+    Rcw = pose[0:2,0:2]
+    tcw = pose[0:2,2]
+    Rwc = Rcw.transpose()
+    Ow  = np.dot(-Rwc, tcw)
+    inv_pose[0:2,0:2] = Rwc
+    inv_pose[0:2,2] = Ow
+    return inv_pose
 
-
-def compute_comfort_values(data_path):
+def compute_comfort_values(data_path, no_leading=False):
     routes = glob.glob(os.path.join(data_path, '*'))
     sort_nicely(routes)
     long_comfort_values=[]
@@ -399,37 +407,65 @@ def compute_comfort_values(data_path):
     for route_path in routes:
         json_path_list = glob.glob(os.path.join(route_path, '0','can_bus*.json'))
         sort_nicely(json_path_list)
-
         ego_speeds = []
         ego_info = []
         wp = []
+        obstacle_info = []
         for json_file in json_path_list:
             with open(json_file) as json_:
                 data = json.load(json_)
-                ego_speeds.append(np.clip(round(data['speed'], 1), 0.0, None))
-                ego_info.append((data['ego_location'], data['ego_rotation']))
-                wp.append(data['ego_wp_location'])
+                if not no_leading:
+                    try:
+                        obstacle_info.append((data['FollowingLeadingVehicleInLowSpeed']['obstacle1_location'],
+                                              data['FollowingLeadingVehicleInLowSpeed']['obstacle1_rotation']))
+                        ego_speeds.append(np.clip(round(data['speed'], 1), 0.0, None))
+                        ego_info.append((data['ego_location'], data['ego_rotation']))
+
+                        wp.append(data['ego_wp_location'])
+                    except:
+                        pass
+                else:
+                    ego_speeds.append(np.clip(round(data['speed'], 1), 0.0, None))
+                    ego_info.append((data['ego_location'], data['ego_rotation']))
+                    wp.append(data['ego_wp_location'])
 
         long_comfort = []
         for i in range(len(ego_speeds) - 1):
-            long_comfort_value = abs(ego_speeds[i + 1] - ego_speeds[i]) / 0.1
-            long_comfort.append(long_comfort_value)
+            if ego_speeds[i] > 0.00:
+                if not no_leading:
+                    obstacle_to_world = np.asarray([[obstacle_info[i][0][0]],
+                                                    [obstacle_info[i][0][1]],
+                                                    [1.0]])
+                    yaw_radiant = np.deg2rad(ego_info[i][1][1])
+                    pose_ego_to_world = np.asarray([[np.cos(yaw_radiant), -np.sin(yaw_radiant), ego_info[i][0][0]],
+                                                    [np.sin(yaw_radiant),  np.cos(yaw_radiant), ego_info[i][0][1]],
+                                                    [0.0, 0.0, 1.0]])
 
-        #print('Comfort Value: long', np.mean(long_comfort), np.std(long_comfort))
+                    pose_world_to_ego = inverse_pose(pose_ego_to_world)
+                    obstacle_to_ego = np.dot(pose_world_to_ego, obstacle_to_world)
+
+                    if obstacle_to_ego[0] >0:
+                        long_comfort_value = abs(ego_speeds[i + 1] - ego_speeds[i]) / 0.1
+                        long_comfort.append(long_comfort_value)
+                    else:
+                        print(route_path.split('/')[-1],i)
+                else:
+                    long_comfort_value = abs(ego_speeds[i + 1] - ego_speeds[i]) / 0.1
+                    long_comfort.append(long_comfort_value)
+
         long_comfort_values += long_comfort
 
         relative_angle = []
         for i in range(len(ego_info) - 1):
             ego_loc, ego_rot = ego_info[i]
             next_wp = wp[i + 1]
-            relative_angle.append(compute_relative_angle(ego_loc, ego_rot, next_wp))
+            ra = compute_relative_angle(ego_loc, ego_rot, next_wp)
+            relative_angle.append(ra)
 
         lat_comfort = []
         for i in range(len(relative_angle) - 1):
             lat_comfort_value = abs(relative_angle[i + 1] - relative_angle[i]) / 0.1
             lat_comfort.append(lat_comfort_value)
-
-        #print('Comfort Value: lat', np.mean(lat_comfort), np.std(lat_comfort))
 
         lat_comfort_values += lat_comfort
 
@@ -440,27 +476,26 @@ def compute_comfort_values(data_path):
 
 
 
-
-
-
-
-
 make_plots = False
 make_trajectries = False
 analysis_comfort_values =True
 
 if analysis_comfort_values:
     root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newweathertown_Town02')
-    model_name = '20220405_SingleFrame_Roach19Hours_T1_seed1_1_finetune_cmd_600000_10FPS'
+    model_name = '20220405_TempoarlTFM_EnDe_5Frames_Roach19Hours_T1_seed1_1_nomask_finetune_cmd_600000_10FPS'
     car_type= ['carlacola']
-    leading_speed= ['2mps', '3mps', '4mps', '5mps']
+    leading_speed= ['3mps']
+
+    #car_type = ['noleadingcar']
+    #leading_speed = ['none']
 
     for car in car_type:
         for sp in leading_speed:
             data_path = os.path.join(root_dir, model_name, car, sp)
             print('-----------------------------------------------------')
+            print('Model:', model_name)
             print(car, sp)
-            compute_comfort_values(data_path)
+            compute_comfort_values(data_path, no_leading= True if car == 'noleadingcar' else False)
 
 
 if make_plots:
