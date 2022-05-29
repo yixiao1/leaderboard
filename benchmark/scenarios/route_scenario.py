@@ -307,27 +307,6 @@ class RouteScenario(BasicScenario):
         spectator.set_transform(carla.Transform(ego_trans.location + carla.Location(z=50),
                                                     carla.Rotation(pitch=-90)))
 
-        # we change the Vehicle Physics Control in CARLA 0.9.13 the same as the setting in CARLA 0.9.10
-        #vehicle_physics = ego_vehicle.get_physics_control()
-        #wheels = vehicle_physics.wheels
-        #for wheel in wheels:
-        #    wheel.lat_stiff_max_load = 2.0
-        #    wheel.long_stiff_value = 1000.0
-        #    wheel.lat_stiff_value = 20.0
-        #    wheel.max_brake_torque = 1500.0
-
-        #vehicle_physics.wheels = wheels
-        #ego_vehicle.apply_physics_control(vehicle_physics)
-        #time.sleep(2.0)
-
-        #vehicle_physics_new = ego_vehicle.get_physics_control()
-
-        #print('===================== After modification =====================')
-        #print("\n lat_stiff_max_load", vehicle_physics_new.wheels[0].lat_stiff_max_load, '(shoud be 2.0)')
-        #print("\n lat_stiff_value", vehicle_physics_new.wheels[0].lat_stiff_value, '(shoud be 20.0)')
-        #print("\n long_stiff_value", vehicle_physics_new.wheels[0].long_stiff_value, '(shoud be 1000.0)')
-        #print('\n ===============================================')
-
         return ego_vehicle
 
     def _estimate_route_timeout(self):
@@ -620,12 +599,12 @@ class RouteScenario(BasicScenario):
 
         route_criterion = InRouteTest(self.ego_vehicles[0],
                                       route=route,
-                                      offroad_max=30,
+                                      offroad_max=20,
                                       terminate_on_failure=True)
                                       
         completion_criterion = RouteCompletionTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
-        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=True)
+        outsidelane_criterion = OutsideRouteLanesTest(self.ego_vehicles[0], route=route, terminate_on_failure=False)
 
         red_light_criterion = RunningRedLightTest(self.ego_vehicles[0], terminate_on_failure=False)
 

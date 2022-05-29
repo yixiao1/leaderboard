@@ -351,19 +351,21 @@ class FramesStacking_SpeedInput_agent(object):
 
         #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
 
-        if len(self.inputs_buffer.queue) <= ((g_conf.ENCODER_INPUT_FRAMES_NUM - 1) * g_conf.ENCODER_STEP_INTERVAL):
+        if len(self.inputs_buffer.queue) < ((g_conf.ENCODER_INPUT_FRAMES_NUM - 1) * g_conf.ENCODER_STEP_INTERVAL):
             print('=== The agent is stopping and waitting for the input buffer ...')
             self.inputs_buffer.put(input_data)
             return self.stopping_and_wait()
 
         else:
+            # we stack the current inputs to the end of buffer
+            self.inputs_buffer.put(input_data)
+
             inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue), g_conf.ENCODER_STEP_INTERVAL)]
             control = self.run_step(inputs)
             control.manual_gear_shift = False
 
-            # We pop the first frame of the input buffer and stack the current frame to the end
+            # We pop the first frame of the input buffer
             self.inputs_buffer.get()
-            self.inputs_buffer.put(input_data)
 
             return control
 

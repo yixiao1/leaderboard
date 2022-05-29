@@ -459,7 +459,12 @@ def compute_comfort_values(data_path, no_leading=False):
         for i in range(len(ego_info) - 1):
             ego_loc, ego_rot = ego_info[i]
             next_wp = wp[i + 1]
+<<<<<<< HEAD
             ra = compute_relative_angle(ego_loc, ego_rot, next_wp)
+=======
+            cur_wp = wp[i]
+            ra = compute_relative_angle(ego_loc, ego_rot, cur_wp, next_wp)
+>>>>>>> 02490ce77f22e32b84c950447de2710af5c7fd20
             relative_angle.append(ra)
 
         lat_comfort = []
@@ -483,7 +488,11 @@ analysis_comfort_values =True
 if analysis_comfort_values:
     root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newweathertown_Town02')
     model_name = '20220405_TempoarlTFM_EnDe_5Frames_Roach19Hours_T1_seed1_1_nomask_finetune_cmd_600000_10FPS'
+<<<<<<< HEAD
     car_type= ['carlacola']
+=======
+    car_type= ['microlino']
+>>>>>>> 02490ce77f22e32b84c950447de2710af5c7fd20
     leading_speed= ['3mps']
 
     #car_type = ['noleadingcar']
@@ -509,7 +518,7 @@ if make_plots:
         route_name = 'RouteScenario_' + str(i) + '_Scenario5'
         for value_name in value_names:
             data_paths = [
-                os.path.join(root_dir,'20220405_SingleFrame_Roach19Hours_T1_seed1_1_finetune_cmd_600000_10FPS', car_type, leading_speed, route_name,'0'),
+                os.path.join(root_dir,'20220405_TempoarlTFM_EnDe_5Frames_Roach19Hours_T1_seed1_1_nomask_finetune_cmd_600000_10FPS', car_type, leading_speed, route_name,'0'),
                 #os.path.join(root_dir,'20220405_TempoarlTFM_En_5Frames_LastAction_NoToken_Roach19Hours_T1_seed1_1_nomask_finetune_cmd_650000_10FPS', car_type, leading_speed, route_name,'0'),
                 #root_dir+'20220405_Roach_rl_birdview_11833344_10FPS/' + route_name + '/0'
                 ]
