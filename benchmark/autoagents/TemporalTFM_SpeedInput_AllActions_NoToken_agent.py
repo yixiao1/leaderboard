@@ -196,7 +196,7 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
             grayscale_cam = cam(input_tensor=input_tensor)
             grayscale_cam = grayscale_cam[0, :]
             att = np.delete(self.cmap_2(grayscale_cam), 3, 2)
-            att = np.array(Image.fromarray((att * 255).astype(np.uint8)))
+            att = (att * 255).astype(np.uint8)
             last_att = Image.fromarray(att)
 
             blend_im = Image.blend(last_input, last_att, 0.7)
