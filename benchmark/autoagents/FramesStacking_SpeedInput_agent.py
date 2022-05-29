@@ -190,7 +190,7 @@ class FramesStacking_SpeedInput_agent(object):
             att = (att * 255).astype(np.uint8)
             last_att = Image.fromarray(att)
 
-            blend_im = Image.blend(last_input, last_att, 0.7)
+            blend_im = Image.blend(last_input, last_att, 0.5)
 
             #last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
             #                               g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()

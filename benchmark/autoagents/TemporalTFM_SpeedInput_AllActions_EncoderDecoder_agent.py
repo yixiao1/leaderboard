@@ -201,7 +201,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             att = (att * 255).astype(np.uint8)
             last_att = Image.fromarray(att)
 
-            blend_im = Image.blend(last_input, last_att, 0.7)
+            blend_im = Image.blend(last_input, last_att, 0.5)
 
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
@@ -424,7 +424,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
             (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
         last_att = Image.fromarray(att)
-        blend_im = Image.blend(last_input, last_att, 0.7)
+        blend_im = Image.blend(last_input, last_att, 0.5)
 
         if inputs_data is not None:
             cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
@@ -490,7 +490,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         mask = np.array(Image.fromarray(mask / mask.max()).resize(
             cat_inputs.size))
         mask = Image.fromarray((np.delete(self.cmap_2(mask), 3, 2) * 255).astype('uint8'))
-        attention_map = Image.blend(cat_inputs, mask, 0.7)
+        attention_map = Image.blend(cat_inputs, mask, 0.5)
         attention_map.save(
             os.path.join(self.attention_save_path + '_TxEncoder_attn', str(self.att_count).zfill(6) + '.png'))
 
