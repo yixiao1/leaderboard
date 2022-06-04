@@ -29,6 +29,7 @@ from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
 from dataloaders.transforms import encode_directions_4, encode_directions_6, inverse_normalize
+
 from benchmark.utils.waypointer import Waypointer
 from benchmark.envs.data_writer import Writer
 
@@ -120,6 +121,9 @@ class FramesStacking_SpeedInput_agent(object):
         self.world=world
         self.map=self.world.get_map()
 
+    def set_ego_vehicle(self, ego_vehicle):
+        self._ego_vehicle=ego_vehicle
+
     def sensors(self):  # pylint: disable=no-self-use
         """
         Define the sensor suite required by the agent
@@ -158,6 +162,7 @@ class FramesStacking_SpeedInput_agent(object):
         direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0) for i in range(len(inputs_data))]
         
         actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, direction, norm_speed)
+
         all_action_outputs = [
             self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
             for i in range(g_conf.ENCODER_INPUT_FRAMES_NUM)]
@@ -273,7 +278,7 @@ class FramesStacking_SpeedInput_agent(object):
                               font=font)
             """
 
-            mat = mat.resize((420, 180))
+            #mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.jpg'))
 
             data = inputs_data[-1]['can_bus'][1]
@@ -368,9 +373,6 @@ class FramesStacking_SpeedInput_agent(object):
             self.inputs_buffer.get()
 
             return control
-
-    def set_ego_vehicle(self, ego_vehicle):
-        self._ego_vehicle=ego_vehicle
 
     def set_global_plan(self, global_plan_gps, global_plan_world_coord):
         """

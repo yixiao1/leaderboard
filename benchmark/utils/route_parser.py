@@ -63,7 +63,7 @@ class RouteParser(object):
 
             new_config = RouteScenarioConfiguration()
             new_config.town = route.attrib['town']
-            new_config.defined_available_senarios_list = RouteParser.parse_scenario(route)
+            new_config.defined_available_senarios_list, new_config.route_scenario_setting = RouteParser.parse_scenario(route)
             new_config.name = "RouteScenario_{}".format(route_id) + '_'+'_'.join(new_config.defined_available_senarios_list)
             new_config.weather = RouteParser.parse_weather(route)
             new_config.scenario_file = scenario_file
@@ -171,7 +171,14 @@ class RouteParser(object):
                 for _, scenario_name in scenario_attrib.attrib.items():
                     scenario_types_list.append(scenario_name)
 
-        return scenario_types_list
+        scenario_setting_dict = {}
+        route_scenario_setting_exist = route.find("scenario_setting")
+        if route_scenario_setting_exist is not None:
+            for scenario_setting_attrib in route.iter("scenario_setting"):
+                for setting_name, value in scenario_setting_attrib.attrib.items():
+                    scenario_setting_dict.update({setting_name: value})
+
+        return scenario_types_list, scenario_setting_dict
 
     @staticmethod
     def check_trigger_position(new_trigger, existing_triggers):
@@ -418,6 +425,7 @@ class RouteParser(object):
                             'other_actors': other_vehicles,
                             'trigger_position': waypoint,
                             'scenario_type': scenario_subtype, # some scenarios have route dependent configurations
+                            'route_scenario_setting': config.route_scenario_setting
                         }
 
                         trigger_id = RouteParser.check_trigger_position(waypoint, existent_triggers)

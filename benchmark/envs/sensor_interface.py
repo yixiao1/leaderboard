@@ -50,8 +50,9 @@ class GenericMeasurement(object):
 
 
 class BaseReader(object):
-    def __init__(self, vehicle, reading_frequency=1.0, other_actors_dict=None):
+    def __init__(self, vehicle, reading_frequency=1.0, other_actors_dict=None, route=None):
         self._vehicle = vehicle
+        self._route_to_finish = route
         self._other_actors_dict = other_actors_dict
         self._reading_frequency = reading_frequency
         self._callback = None
@@ -148,19 +149,41 @@ class CanbusReader(BaseReader):
     """
     Sensor to measure the action of the vehicle.
     """
+    def _truncate_global_route_till_local_target(self, ego_location, windows_size=5):
+        ev_location = ego_location
+        closest_idx = 0
+
+        for i in range(len(self._route_to_finish)-1):
+            if i > windows_size:
+                break
+
+            loc0 = self._route_to_finish[i][0].location
+            loc1 = self._route_to_finish[i+1][0].location
+
+            wp_dir = loc1 - loc0
+            wp_veh = ev_location - loc0
+            dot_ve_wp = wp_veh.x * wp_dir.x + wp_veh.y * wp_dir.y + wp_veh.z * wp_dir.z
+
+            if dot_ve_wp > 0:
+                closest_idx = i+1
+
+        latest_wp_transform, _ = self._route_to_finish[closest_idx]
+        self._route_to_finish = self._route_to_finish[closest_idx:]
+        return latest_wp_transform
+
     def __call__(self):
         """ We convert the vehicle physics information into a convenient dictionary """
         control = self._vehicle.get_control()
         transform = self._vehicle.get_transform()
-        ego_waypoint = CarlaDataProvider.get_map().get_waypoint(self._vehicle.get_location())
+        latest_navigate_wp_transform = self._truncate_global_route_till_local_target(transform.location)
 
         can_bus_dict={
             'ego_location': [transform.location.x, transform.location.y, transform.location.z],
             'ego_rotation': [transform.rotation.pitch, transform.rotation.yaw, transform.rotation.roll],
-            'ego_wp_location': [ego_waypoint.transform.location.x, ego_waypoint.transform.location.y,
-                                ego_waypoint.transform.location.z],
-            'ego_wp_rotation': [ego_waypoint.transform.rotation.pitch, ego_waypoint.transform.rotation.yaw,
-                                ego_waypoint.transform.rotation.roll],
+            'navigate_wp_location': [latest_navigate_wp_transform.location.x, latest_navigate_wp_transform.location.y,
+                                     latest_navigate_wp_transform.location.z],
+            'navigate_wp_rotation': [latest_navigate_wp_transform.rotation.pitch, latest_navigate_wp_transform.rotation.yaw,
+                                     latest_navigate_wp_transform.rotation.roll],
             'steer': np.nan_to_num(control.steer),
             'throttle': np.nan_to_num(control.throttle),
             'brake': np.nan_to_num(control.brake),

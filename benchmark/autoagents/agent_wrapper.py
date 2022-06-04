@@ -75,7 +75,7 @@ class AgentWrapper(object):
         """
         return self._agent()
 
-    def setup_sensors(self, vehicle, debug_mode=False, other_actors_dict=None):
+    def setup_sensors(self, vehicle, debug_mode=False, other_actors_dict=None, route=None):
         """
         Create the sensors defined by the user and attach them to the ego-vehicle
         :param vehicle: ego vehicle
@@ -97,7 +97,7 @@ class AgentWrapper(object):
                 # The speedometer pseudo sensor is created directly here
                 delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
                 frame_rate = 1 / delta_time
-                sensor = CanbusReader(vehicle, frame_rate, other_actors_dict)
+                sensor = CanbusReader(vehicle, frame_rate, other_actors_dict, route)
             # These are the sensors spawned on the carla world
             else:
                 bp = bp_library.find(str(sensor_spec['type']))

@@ -444,6 +444,7 @@ class RouteScenario(BasicScenario):
                                                                           ego_vehicle.get_transform(),
                                                                           'hero')]
             scenario_configuration.route = self.route
+            scenario_configuration.route_scenario_setting = definition['route_scenario_setting']
             route_var_name = "ScenarioRouteNumber{}".format(scenario_number)
             scenario_configuration.route_var_name = route_var_name
             try:
