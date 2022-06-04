@@ -61,6 +61,32 @@ class Waypointer:
 
         return self.checkpoint
 
+    def tick_old(self, gnss_data, imu_data):
+
+        next_gps, _ = self._global_plan_gps[self.current_idx + 1]
+        current_location = self.gps_to_location(gnss_data)
+
+        next_vec_in_global = self.gps_to_location(next_gps) - self.gps_to_location(gnss_data)
+        compass = 0.0 if np.isnan(imu_data[-1]) else imu_data[-1]
+        ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
+        loc_in_ev = self.vec_global_to_ref(next_vec_in_global, ref_rot_in_global)
+
+        if np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0:
+            self.current_idx += 1
+            self.current_idx = min(self.current_idx, len(self._global_plan_gps) - 2)
+
+        _, road_option_0 = self._global_plan_gps[max(0, self.current_idx)]
+        gps_point, road_option_1 = self._global_plan_gps[self.current_idx + 1]
+
+        if (road_option_0 in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]) \
+                and (road_option_1 not in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]):
+            road_option = road_option_1
+        else:
+            road_option = road_option_0
+        self.checkpoint = (current_location.x, current_location.y, road_option)
+
+        return self.checkpoint
+
     def gps_to_location(self, gps):
         lat, lon, z = gps
         lat = float(lat)
