@@ -310,7 +310,7 @@ class StatisticsManager(object):
                           ]
 
         data['labels'] = ['Success rate',
-                          'Success rate (strict)'
+                          'Success rate (strict)',
                           'Avg. average driving velocity',
                           'Avg. driving score',
                           'Avg. route completion',
