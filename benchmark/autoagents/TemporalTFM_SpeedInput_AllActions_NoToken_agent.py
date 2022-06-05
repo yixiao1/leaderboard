@@ -189,7 +189,8 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
             # adding the last command to the end and take only the last part
             self.direction += [torch.cuda.FloatTensor(
                 self.process_command(inputs_data[-1]['GPS'][1],
-                                     inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()][-g_conf.ENCODER_INPUT_FRAMES_NUM,:]
+                                     inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()]
+            self.direction = self.direction[-g_conf.ENCODER_INPUT_FRAMES_NUM, :]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights = self._model.forward_eval(norm_rgb, self.direction, norm_speed)
         all_action_outputs = [self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
