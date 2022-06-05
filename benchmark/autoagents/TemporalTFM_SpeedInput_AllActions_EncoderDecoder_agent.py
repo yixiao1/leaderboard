@@ -28,7 +28,7 @@ from benchmark.envs.sensor_interface import SensorInterface
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize, decode_directions_4, decode_directions_6
 from benchmark.utils.waypointer import Waypointer
 from benchmark.envs.data_writer import Writer
 
@@ -85,6 +85,8 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             self.cmap_2 = plt.get_cmap('jet')
             self.attention_save_path = save_attention
             self.att_count = 0
+
+        self.first_run = True
 
     def setup(self, path_to_conf_file):
         """
@@ -151,14 +153,20 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         Execute one step of navigation.
         :return: control
         """
-
         control = carla.VehicleControl()
         norm_rgb = [self.process_image(inputs_data[i]['rgb_central'][1]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
-        direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0).cuda()
-                     for i in range(len(inputs_data))]
+        if self.first_run:
+            self.direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0).cuda()
+                         for i in range(len(inputs_data))]
+            self.first_run=False
+        else:
+            self.direction = self.direction[-4:] + \
+                             [torch.cuda.FloatTensor(self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()]
+        #direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0).cuda()
+        #             for i in range(len(inputs_data))]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions = [torch.cuda.FloatTensor(inputs_data[i]['actions']).cuda() for i in range(len(inputs_data))]
-        actions_outputs, att_backbone_layers, attn_weights, _, _ = self._model.forward_eval(norm_rgb, direction, norm_speed, actions)
+        actions_outputs, att_backbone_layers, attn_weights, _, _ = self._model.forward_eval(norm_rgb, self.direction, norm_speed, actions)
         all_action_outputs = [
             self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
             for i in range(g_conf.ENCODER_INPUT_FRAMES_NUM)]
@@ -205,7 +213,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
 
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
-            cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
+            cmd = decode_directions_4(self.direction[-1].detach().cpu().numpy().squeeze(0))
             if float(cmd) == 1.0:
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_left.png'))
 
@@ -270,7 +278,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
                               
             """
 
-            mat = mat.resize((420, 180))
+            #mat = mat.resize((420, 180))
             mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.jpg'))
 
             data = inputs_data[-1]['can_bus'][1]
@@ -374,7 +382,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         """
         Set the plan (route) for the agent
         """
-        ds_ids = downsample_route(global_plan_world_coord, 50)
+        ds_ids = downsample_route(global_plan_world_coord, 10000000)
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]
 
