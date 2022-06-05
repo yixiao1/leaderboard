@@ -19,7 +19,7 @@ class Waypointer:
 
         self.current_idx = -1
 
-    def tick_new(self, gnss_data, imu_data):
+    def tick(self, gnss_data, imu_data):
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)
 
@@ -37,11 +37,12 @@ class Waypointer:
             next_road_option = next_road_option_1
         else:
             next_road_option = next_road_option_0
+
+        #print(next_road_option)
         if next_road_option == RoadOption.LANEFOLLOW:
             command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x < 0.0)
         else:
             command_trigger_condition = (np.sqrt(loc_in_ev.x ** 2 + loc_in_ev.y ** 2) < 12.0 and loc_in_ev.x > 0.0)
-
 
         if command_trigger_condition:
             self.current_idx = min(self.current_idx+1, len(self._global_plan_gps) - 2)
@@ -61,7 +62,7 @@ class Waypointer:
 
         return self.checkpoint
 
-    def tick(self, gnss_data, imu_data):
+    def tick_old(self, gnss_data, imu_data):
 
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)

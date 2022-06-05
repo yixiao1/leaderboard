@@ -28,7 +28,7 @@ from benchmark.envs.sensor_interface import SensorInterface
 from configs import g_conf, merge_with_yaml, set_type_of_process
 from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
-from dataloaders.transforms import encode_directions_4, encode_directions_6, inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6, inverse_normalize, decode_directions_4, decode_directions_6
 
 from benchmark.utils.waypointer import Waypointer
 from benchmark.envs.data_writer import Writer
@@ -89,6 +89,8 @@ class FramesStacking_SpeedInput_agent(object):
             self.cmap_2 = plt.get_cmap('jet')
             self.attention_save_path = save_attention
             self.att_count = 0
+
+        self.first_run=True
 
     def setup(self, path_to_conf_file):
         """
@@ -156,12 +158,20 @@ class FramesStacking_SpeedInput_agent(object):
         :return: control
         """
 
+        print('   ', self.att_count)
+
         control = carla.VehicleControl()
         norm_rgb = [self.process_image(inputs_data[i]['rgb_central'][1]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0) for i in range(len(inputs_data))]
-        direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0) for i in range(len(inputs_data))]
-        
-        actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, direction, norm_speed)
+        if self.first_run:
+            self.direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0).cuda()
+                         for i in range(len(inputs_data))]
+            self.first_run=False
+        else:
+            self.direction = self.direction[-4:] + \
+                             [torch.cuda.FloatTensor(self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()]
+
+        actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, self.direction, norm_speed)
 
         all_action_outputs = [
             self.process_control_outputs(actions_outputs[:, i, -len(g_conf.TARGETS):].detach().cpu().numpy().squeeze(0))
@@ -213,7 +223,7 @@ class FramesStacking_SpeedInput_agent(object):
 
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
-            cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
+            cmd = decode_directions_4(self.direction[-1].detach().cpu().numpy().squeeze(0))
             if float(cmd) == 1.0:
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_left.png'))
 
@@ -378,7 +388,8 @@ class FramesStacking_SpeedInput_agent(object):
         """
         Set the plan (route) for the agent
         """
-        ds_ids = downsample_route(global_plan_world_coord, 50)
+        ds_ids = downsample_route(global_plan_world_coord, 10000000)
+        print(ds_ids)
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]
         self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
