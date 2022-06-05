@@ -115,9 +115,9 @@ class ScenarioManager(object):
         self.other_actors_dict = scenario.other_actors_dict
         self.route = scenario.route
 
-        self._agent.setup_sensors(self.ego_vehicles[0], self._debug_mode, self.other_actors_dict, self.route)
+        self._agent.setup_sensors(self.ego_vehicles[0], self.other_actors_dict, self.route)
 
-    def run_scenario(self, save_sensors=None):
+    def run_scenario(self):
         """
         Trigger the start of the scenario and wait for it to finish/fail
         """
@@ -136,10 +136,6 @@ class ScenarioManager(object):
                     timestamp = snapshot.timestamp
             if timestamp:
                 self._tick_scenario(timestamp)
-                if self._running:
-                    if save_sensors:
-                        self._agent._agent.sensor_interface.wait_sensors_written(self._agent._agent.writer)
-                        self._agent._agent.writer.update_latest_id()
 
     def _tick_scenario(self, timestamp):
         """
@@ -155,7 +151,7 @@ class ScenarioManager(object):
             CarlaDataProvider.on_carla_tick()
 
             try:
-                ego_action = self._agent()
+                ego_action = self._agent(timestamp)
 
             # Special exception inside the agent that isn't caused by the agent
             except SensorReceivedNoData as e:

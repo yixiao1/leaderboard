@@ -14,7 +14,6 @@ from enum import Enum
 import carla
 import os
 import torch
-from srunner.scenariomanager.timer import GameTime
 from queue import Queue
 import json
 import torchvision.transforms.functional as TF
@@ -30,7 +29,6 @@ from network.models_console import Models
 from _utils.training_utils import DataParallelWrapper
 from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize, decode_directions_4, decode_directions_6
 from benchmark.utils.waypointer import Waypointer
-from benchmark.envs.data_writer import Writer
 
 from pytorch_grad_cam.pytorch_grad_cam.grad_cam import GradCAM
 
@@ -59,7 +57,7 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
     Autonomous agent base class. All user agents have to be derived from this class
     """
 
-    def __init__(self, path_to_conf_file, save_sensor=None, save_attention=None):
+    def __init__(self, path_to_conf_file, save_driving_vision, save_driving_measurement):
         self.track = Track.SENSORS
         #  current global plans to reach a destination
         self._global_plan = None
@@ -69,26 +67,17 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         self.sensor_interface = SensorInterface()
         self.inputs_buffer=Queue()
         self.waypointer = None
-        self.attention_save_path =None
+        self.first_run = True
+        self.vision_save_path = save_driving_vision
+        self.measurement_save_path = save_driving_measurement
 
         # agent's initialization
-        self.setup(path_to_conf_file)
+        self.setup_model(path_to_conf_file)
 
-        self.wallclock_t0 = None
+        self.cmap_2 = plt.get_cmap('jet')
+        self.datapoint_count = 0
 
-        if save_sensor is not None:
-            self.writer = Writer(save_sensor)
-        else:
-            self.writer = None
-
-        if save_attention:
-            self.cmap_2 = plt.get_cmap('jet')
-            self.attention_save_path = save_attention
-            self.att_count = 0
-
-        self.first_run = True
-
-    def setup(self, path_to_conf_file):
+    def setup_model(self, path_to_conf_file):
         """
         Initialize everything needed by your agent and set the track attribute to the right type:
             Track.SENSORS : CAMERAS, LIDAR, RADAR, GPS and IMU sensors are allowed
@@ -100,7 +89,6 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         g_conf.immutable(False)
         merge_with_yaml(os.path.join(exp_dir, yaml_conf), process_type='drive')
         set_type_of_process('drive', root=os.environ["TRAINING_RESULTS_ROOT"])
-
         self._model = Models(g_conf.MODEL_TYPE, g_conf.MODEL_CONFIGURATION)
         if torch.cuda.device_count() > 1 and g_conf.DATA_PARALLEL:
             print("Using multiple GPUs parallel! ")
@@ -121,6 +109,19 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
     def set_world(self, world):
         self.world=world
         self.map=self.world.get_map()
+
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
+        """
+        Set the plan (route) for the agent
+        """
+        ds_ids = downsample_route(global_plan_world_coord, 10000000)
+        self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in
+                                         ds_ids]
+        self._global_plan = [global_plan_gps[x] for x in ds_ids]
+        self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
+    
+    def set_ego_vehicle(self, ego_vehicle):
+        self._ego_vehicle=ego_vehicle
 
     def sensors(self):  # pylint: disable=no-self-use
         """
@@ -147,6 +148,47 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         ]
 
         return sensors
+    
+
+    def __call__(self):
+        """
+        Execute the agent call, e.g. agent()
+        Returns the next vehicle controls
+        """
+        input_data = self.sensor_interface.get_data()
+
+        for key, values in input_data.items():
+            if values[0] != timestamp.frame:
+                raise RuntimeError(' The frame number of sensor data does not match the timestamp frame:', key)
+
+        if len(self.inputs_buffer.queue) < ((g_conf.ENCODER_INPUT_FRAMES_NUM-1) * g_conf.ENCODER_STEP_INTERVAL):
+            print('=== The agent is stopping and waitting for the input buffer ...')
+
+            if g_conf.ACCELERATION_AS_ACTION:
+                input_data.update({'actions': [[0.0, 1.0]]})
+            else:
+                input_data.update({'actions': [[0.0, 1.0, 0.0]]})
+
+            self.inputs_buffer.put(input_data)
+            return self.stopping_and_wait()
+
+        else:
+            # we add a fake current's action (no use in the model), and stack the current inputs to the end of buffer
+            input_data.update({'actions': self.latest_actions})
+            self.inputs_buffer.put(input_data)
+
+            inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue), g_conf.ENCODER_STEP_INTERVAL)]
+            control, self.latest_actions = self.run_step(inputs)
+            control.manual_gear_shift = False
+
+            # we update the current's actions by the prediction
+            input_data.update({'actions': self.latest_actions})
+            self.inputs_buffer.queue[-1] = input_data
+
+            # We pop the first frame of the input buffer
+            self.inputs_buffer.get(True)
+
+            return control
 
     def run_step(self, inputs_data):
         """
@@ -162,8 +204,6 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         else:
             self.direction = self.direction[-4:] + \
                              [torch.cuda.FloatTensor(self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()]
-        #direction = [torch.cuda.FloatTensor(self.process_command(inputs_data[i]['GPS'][1], inputs_data[i]['IMU'][1])[0]).unsqueeze(0).cuda()
-        #             for i in range(len(inputs_data))]
         norm_speed = [torch.cuda.FloatTensor([self.process_speed(inputs_data[i]['SPEED'][1]['speed'])]).unsqueeze(0).cuda() for i in range(len(inputs_data))]
         actions = [torch.cuda.FloatTensor(inputs_data[i]['actions']).cuda() for i in range(len(inputs_data))]
         actions_outputs, att_backbone_layers, attn_weights, _, _ = self._model.forward_eval(norm_rgb, self.direction, norm_speed, actions)
@@ -177,22 +217,9 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         control.brake = float(brake)
         control.hand_brake = False
 
-        if self.attention_save_path:
-            if not os.path.exists(self.attention_save_path):
-                os.makedirs(self.attention_save_path)
-            # last_input = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
-            #                               g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
-            # last_input = last_input.transpose(1, 2, 0) * 255
-            # last_input = last_input.astype(np.uint8)
-            # last_input = Image.fromarray(last_input)
-
-            # att = np.delete(self.cmap_2(np.abs(att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
-            #    att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
-            # att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
-            #    (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
-            # last_att = Image.fromarray(att)
-            # blend_im = Image.blend(last_input, last_att, 0.7)
-
+        if self.vision_save_path:
+            if not os.path.exists(self.vision_save_path):
+                os.makedirs(self.vision_save_path)
             rgb_img = inverse_normalize(norm_rgb[-1], g_conf.IMG_NORMALIZATION['mean'],
                                         g_conf.IMG_NORMALIZATION['std']).squeeze().cpu().data.numpy()
             last_input = rgb_img.transpose(1, 2, 0) * 255
@@ -202,7 +229,6 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             target_layers = [self._model._model.encoder_embedding_perception.layer4[-1]]
             cam = GradCAM(model=self._model._model.encoder_embedding_perception, target_layers=target_layers)
             input_tensor = norm_rgb[-1]
-            # targets = [actions_outputs]
             grayscale_cam = cam(input_tensor=input_tensor)
             grayscale_cam = grayscale_cam[0, :]
             att = np.delete(self.cmap_2(grayscale_cam), 3, 2)
@@ -229,14 +255,6 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             else:
                 raise RuntimeError()
 
-            """
-            elif float(cmd) == 5.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_left.png'))
-
-            elif float(cmd) == 6.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '6_directions', 'change_right.png'))
-            """
-
             command_sign = command_sign.resize((130, 40))
 
             mat = Image.new('RGB', (
@@ -259,46 +277,30 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
             draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - 30),
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
 
-            """
-
-            for i, prev_action in enumerate(all_action_outputs[:-1]):
-                steer = prev_action[0]
-                throttle = prev_action[1]
-                brake = prev_action[2]
-                speed = inputs_data[i]['SPEED'][1]['speed']
-                draw_mat.text((last_input_ontop.width + 40, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
-                              str("Steer " + "%.3f" % steer), fill=(255, 255, 255), font=font)
-                draw_mat.text((last_input_ontop.width + 180, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
-                              str("Throttle " + "%.3f" % throttle), fill=(255, 255, 255), font=font)
-                draw_mat.text((last_input_ontop.width + 320, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
-                              str("Brake " + "%.3f" % brake), fill=(255, 255, 255), font=font)
-                draw_mat.text((last_input_ontop.width + 450, last_input_ontop.height - (g_conf.ENCODER_INPUT_FRAMES_NUM-i)*30),
-                              str("Speed " + "%.3f" % speed), fill=(255, 255, 255),
-                              font=font)
-                              
-            """
-
             #mat = mat.resize((420, 180))
-            mat.save(os.path.join(self.attention_save_path, str(self.att_count).zfill(6) + '.jpg'))
+            mat.save(os.path.join(self.vision_save_path, str(self.datapoint_count).zfill(6) + '.jpg'))
 
+        if self.measurement_save_path:
+            if not os.path.exists(self.measurement_save_path):
+                os.makedirs(self.measurement_save_path)
+
+            # we record the driving measurement data
             data = inputs_data[-1]['can_bus'][1]
-            speed_data = inputs_data[-1]['SPEED'][1]
+            data.update({'steer': np.nan_to_num(control.steer)})
+            data.update({'throttle': np.nan_to_num(control.throttle)})
+            data.update({'brake': np.nan_to_num(control.brake)})
+            data.update({'hand_brake': control.hand_brake})
+            data.update({'reverse': control.reverse})
+            data.update({'speed': inputs_data[-1]['SPEED'][1]})
 
-            ## TODO: HARDCODING
-            for key, value in speed_data.items():
-                if key in data.keys():  # If it exist, add it
-                    data[key].update(value)
-                else:
-                    data.update({key: value})
-
-            with open(os.path.join(self.attention_save_path, 'can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
+            with open(os.path.join(self.measurement_save_path, 'can_bus' + str(self.datapoint_count).zfill(6) + '.json'), 'w') as fo:
                 jsonObj = {}
                 jsonObj.update(data)
                 fo.seek(0)
                 fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
                 fo.close()
 
-            self.att_count += 1
+        self.datapoint_count += 1
 
         last_action_outputs = actions_outputs[:, -1, -len(g_conf.TARGETS):].detach().cpu().numpy()
 
@@ -317,7 +319,6 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
 
         return control
 
-
     def destroy(self):
         """
         Destroy (clean-up) the agent
@@ -328,65 +329,18 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
         self.world = None
         self.map = None
 
-    def __call__(self):
-        """
-        Execute the agent call, e.g. agent()
-        Returns the next vehicle controls
-        """
-        input_data = self.sensor_interface.get_data()
+        self.reset()
 
-        timestamp = GameTime.get_time()
-
-        if not self.wallclock_t0:
-            self.wallclock_t0 = GameTime.get_wallclocktime()
-        wallclock = GameTime.get_wallclocktime()
-        wallclock_diff = (wallclock - self.wallclock_t0).total_seconds()
-
-        #if int(wallclock_diff / 60) % 10 == 0:
-        #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
-
-        if len(self.inputs_buffer.queue) < ((g_conf.ENCODER_INPUT_FRAMES_NUM-1) * g_conf.ENCODER_STEP_INTERVAL):
-            print('=== The agent is stopping and waitting for the input buffer ...')
-
-            if g_conf.ACCELERATION_AS_ACTION:
-                input_data.update({'actions': [[0.0, 1.0]]})
-            else:
-                input_data.update({'actions': [[0.0, 1.0, 0.0]]})
-
-            self.inputs_buffer.put(input_data)
-            return self.stopping_and_wait()
-
-        else:
-            # we add a fake current's action (no use in the model), and stack the current inputs to the end of buffer
-            input_data.update({'actions': self.latest_actions})
-            self.inputs_buffer.put(input_data)
-
-            inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue), g_conf.ENCODER_STEP_INTERVAL)]
-            #inputs = list(self.inputs_buffer.queue)
-            control, actions_outputs = self.run_step(inputs)
-            control.manual_gear_shift = False
-
-            # we update the current's actions by the prediction
-            input_data.update({'actions': self.latest_actions})
-            self.inputs_buffer.queue[-1] = input_data
-
-            # We pop the first frame of the input buffer
-            self.inputs_buffer.get()
-
-            return control
-
-    def set_ego_vehicle(self, ego_vehicle):
-        self._ego_vehicle=ego_vehicle
-
-    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
-        """
-        Set the plan (route) for the agent
-        """
-        ds_ids = downsample_route(global_plan_world_coord, 10000000)
-        self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
-        self._global_plan = [global_plan_gps[x] for x in ds_ids]
-
-        self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
+    def reset(self):
+        self.track = Track.SENSORS
+        self._global_plan = None
+        self._global_plan_world_coord = None
+        self.sensor_interface = None
+        self.inputs_buffer = None
+        self.waypointer = None
+        self.vision_save_path = None
+        self.measurement_save_path = None
+        self.datapoint_count = 0
 
     def process_image(self, image):
         image = Image.fromarray(image)
@@ -421,85 +375,9 @@ class TemporalTFM_SpeedInput_AllActions_EncoderDecoder_agent(object):
     def process_command(self, gps, imu):
         _, _, cmd = self.waypointer.tick(gps, imu)
 
-        return encode_directions_4(cmd.value), cmd.value
-
-    def saving_backbone_attention_maps(self, last_input, att_backbone_layers, inputs_data=None, action=None, speed=None):
-        if not os.path.exists(self.attention_save_path+'_backbone_attn'):
-            os.makedirs(self.attention_save_path+'_backbone_attn')
-
-        att = np.delete(self.cmap_2(np.abs(att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0) / np.abs(
-            att_backbone_layers[-1][-1][0].cpu().data.numpy()).mean(0).max()), 3, 2)
-        att = np.array(Image.fromarray((att * 255).astype(np.uint8)).resize(
-            (g_conf.IMAGE_SHAPE[2], g_conf.IMAGE_SHAPE[1])))
-        last_att = Image.fromarray(att)
-        blend_im = Image.blend(last_input, last_att, 0.5)
-
-        if inputs_data is not None:
-            cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
-            if float(cmd) == 1.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', 'turn_left.png'))
-
-            elif float(cmd) == 2.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', 'turn_right.png'))
-
-            elif float(cmd) == 3.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', 'go_straight.png'))
-
-            elif float(cmd) == 4.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', 'follow_lane.png'))
-
-            elif float(cmd) == 5.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', 'change_left.png'))
-
-            elif float(cmd) == 6.0:
-                command_sign = Image.open(os.path.join(os.getcwd(), 'signs', 'change_right.png'))
-            else:
-                raise RuntimeError()
-
-            command_sign = command_sign.resize((190, 40))
-
-            blend_im.paste(command_sign, (180, 10), command_sign)
-
-            if action is not None:
-                draw = ImageDraw.Draw(blend_im)
-                font = ImageFont.truetype(os.path.join(os.getcwd(), 'signs', 'arial.ttf'), 20)
-                draw.text((46, 150), str("Steer " + "%.3f" % action[0]), fill=(0, 0, 255), font=font)
-                draw.text((185, 150), str("Throttle " + "%.3f" % action[1]), fill=(0, 0, 255), font=font)
-                draw.text((320, 150), str("Brake " + "%.3f" % action[2]), fill=(0, 0, 255), font=font)
-                if speed:
-                    draw.text((450, 150), str("Speed " + "%.3f" % speed), fill=(0, 0, 255), font=font)
-
-        blend_im.save(os.path.join(self.attention_save_path+'_backbone_attn', str(self.att_count).zfill(6) + '.png'))
-
-
-    def saving_TxEncoder_attention_maps(self, cat_inputs, attn_weights):
-        if not os.path.exists(self.attention_save_path+'_TxEncoder_attn'):
-            os.makedirs(self.attention_save_path+'_TxEncoder_attn')
-
-        att_mat = torch.stack(attn_weights).squeeze(1)  # (num_layers, T, S)
-        # To account for residual connections, we add an identity matrix to the
-        # attention matrix and re-normalize the weights.
-        residual_att = torch.eye(att_mat.size(1))
-        aug_att_mat = att_mat.detach().cpu() + residual_att
-        aug_att_mat = aug_att_mat / aug_att_mat.sum(dim=-1).unsqueeze(-1)
-
-        # Recursively multiply the weight matrices
-        joint_attentions = torch.zeros(aug_att_mat.size())
-        joint_attentions[0] = aug_att_mat[0]
-
-        for n in range(1, aug_att_mat.size(0)):
-            joint_attentions[n] = torch.matmul(aug_att_mat[n], joint_attentions[n - 1])
-
-        v = joint_attentions[-1]   # The last TxEncoder layer
-
-        # Attention from the last output token to the input space.
-        mask = v[-1, :].reshape(1, v.shape[-1]).detach().numpy()   # (1, S)
-        #mask = cv2.resize(mask / mask.max(), cat_inputs.size)
-        mask = np.array(Image.fromarray(mask / mask.max()).resize(
-            cat_inputs.size))
-        mask = Image.fromarray((np.delete(self.cmap_2(mask), 3, 2) * 255).astype('uint8'))
-        attention_map = Image.blend(cat_inputs, mask, 0.5)
-        attention_map.save(
-            os.path.join(self.attention_save_path + '_TxEncoder_attn', str(self.att_count).zfill(6) + '.png'))
+        if g_conf.DATA_COMMAND_CLASS_NUM == 4:
+            return encode_directions_4(cmd.value), cmd.value
+        elif g_conf.DATA_COMMAND_CLASS_NUM == 6:
+            return encode_directions_6(cmd.value), cmd.value
 
 

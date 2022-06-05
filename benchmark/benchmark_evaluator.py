@@ -148,8 +148,6 @@ class BenchmarkEvaluator(object):
             # Reset to asynchronous mode
             settings = self.world.get_settings()
             settings.synchronous_mode = False
-            settings.max_substeps = 10
-            settings.max_substep_delta_time = 0.01
             settings.fixed_delta_seconds = None
             self.world.apply_settings(settings)
             self.traffic_manager.set_synchronous_mode(False)
@@ -185,9 +183,6 @@ class BenchmarkEvaluator(object):
         self.world = self.client.load_world(town)
         self.world.set_weather(config.weather)
         settings = self.world.get_settings()
-        if self.frame_rate < 10.0:
-            settings.max_substeps = 16
-            settings.max_substep_delta_time = 0.015
         settings.fixed_delta_seconds = 1.0 / self.frame_rate
         settings.synchronous_mode = True
         settings.no_rendering_mode = True
@@ -256,22 +251,15 @@ class BenchmarkEvaluator(object):
         try:
             self._agent_watchdog.start()
             agent_class_name = getattr(self.module_agent, 'get_entry_point')()
-            save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name, args.checkpoint.split('/')[-1].split('.')[-2], config.name, str(config.repetition_index))
-            if args.save_sensors:
-                if args.save_attention:
-                    self.agent_instance = getattr(self.module_agent, agent_class_name)\
-                        (args.agent_config, save_sensor= save_path, save_attention = save_path)
-                else:
-                    self.agent_instance = getattr(self.module_agent, agent_class_name)\
-                        (args.agent_config,
-                         save_sensor=save_path)
-            else:
-                if args.save_attention:
-                    self.agent_instance = getattr(self.module_agent, agent_class_name)\
-                        (args.agent_config,
-                         save_attention=save_path)
-                else:
-                    self.agent_instance = getattr(self.module_agent, agent_class_name)(args.agent_config)
+            vision_save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name, args.checkpoint.split('/')[-1].split('.')[-2], config.name, str(config.repetition_index)) \
+                if args.save_driving_vision else False
+            measurement_save_path = os.path.join(os.environ['SENSOR_SAVE_PATH'], config.package_name,
+                                            args.checkpoint.split('/')[-1].split('.')[-2], config.name,
+                                            str(config.repetition_index)) \
+                if args.save_driving_measurement else False
+            self.agent_instance = getattr(self.module_agent, agent_class_name)\
+                (args.agent_config, save_driving_vision = vision_save_path, save_driving_measurement = measurement_save_path)
+
             config.agent = self.agent_instance
 
             # Check and store the sensors
@@ -351,7 +339,7 @@ class BenchmarkEvaluator(object):
 
         # Run the scenario
         try:
-            self.manager.run_scenario(args.save_sensors)
+            self.manager.run_scenario()
 
         except AgentError as e:
             # The agent has failed -> stop the route
@@ -471,8 +459,9 @@ def main():
     parser.add_argument('--docker', type=str, default='', help='Use docker to run CARLA off-screen, this is typically for running CARLA on server')
     parser.add_argument('--gpus', nargs='+', dest='gpus', type=str, default=0, help='The GPUs used for running the agent model. The firtst one will be used for running docker')
 
-    parser.add_argument('--save-sensors', action="store_true", help='to save sensor images')
-    parser.add_argument('--save-attention', action="store_true", help=' to save the last attention layer of backbone')
+    #parser.add_argument('--save-sensors', action="store_true", help='to save sensor images')
+    parser.add_argument('--save-driving-vision', action="store_true", help=' to save the driving visualization')
+    parser.add_argument('--save-driving-measurement', action="store_true", help=' to save the driving measurements')
     parser.add_argument('--draw-trajectory', action="store_true", help=' to draw the trajectory of driving')
     parser.add_argument('--fps', default=10, help='The frame rate of CARLA world')
 
@@ -492,7 +481,7 @@ def main():
     else:
         raise ValueError('You need to define the ids of GPU you want to use by adding: --gpus')
 
-    if arguments.save_sensors or arguments.save_attention:
+    if arguments.save_driving_vision or arguments.save_driving_measurement:
         if not os.environ['SENSOR_SAVE_PATH']:
             raise RuntimeError('environemnt argument SENSOR_SAVE_PATH need to be setup for saving data')
 

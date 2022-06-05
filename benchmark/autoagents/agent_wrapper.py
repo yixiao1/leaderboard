@@ -68,13 +68,13 @@ class AgentWrapper(object):
         """
         self._agent = agent
 
-    def __call__(self):
+    def __call__(self, timestamp):
         """
         Pass the call directly to the agent
         """
-        return self._agent()
+        return self._agent(timestamp)
 
-    def setup_sensors(self, vehicle, debug_mode=False, other_actors_dict=None, route=None):
+    def setup_sensors(self, vehicle, other_actors_dict=None, route=None):
         """
         Create the sensors defined by the user and attach them to the ego-vehicle
         :param vehicle: ego vehicle
@@ -152,7 +152,6 @@ class AgentWrapper(object):
                     bp.set_attribute('noise_alt_bias', str(0.0))
                     bp.set_attribute('noise_lat_bias', str(0.0))
                     bp.set_attribute('noise_lon_bias', str(0.0))
-
                     sensor_location = carla.Location()
                     sensor_rotation = carla.Rotation()
 
@@ -163,21 +162,18 @@ class AgentWrapper(object):
                     bp.set_attribute('noise_gyro_stddev_x', str(0.001))
                     bp.set_attribute('noise_gyro_stddev_y', str(0.001))
                     bp.set_attribute('noise_gyro_stddev_z', str(0.001))
-
                     sensor_location = carla.Location()
                     sensor_rotation = carla.Rotation()
                 # create sensor
                 sensor_transform = carla.Transform(sensor_location, sensor_rotation)
                 sensor = CarlaDataProvider.get_world().spawn_actor(bp, sensor_transform, vehicle)
             # setup callback
-            sensor.listen(CallBack(sensor_spec['id'], sensor_spec['type'], sensor, self._agent.sensor_interface,
-                                   writer=self._agent.writer, global_plan=self._agent._global_plan))
+            sensor.listen(CallBack(sensor_spec['id'], sensor_spec['type'], sensor, self._agent.sensor_interface))
             self._sensors_list.append(sensor)
 
-        time.sleep(2)
+        # Tick once to spawn the sensors
+        CarlaDataProvider.get_world().tick()
 
-        while not self._agent.sensor_interface.all_sensors_ready():
-            CarlaDataProvider.get_world().tick()
 
     @staticmethod
     def validate_sensor_configuration(sensors, agent_track, selected_track):
