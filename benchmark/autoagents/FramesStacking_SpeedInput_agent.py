@@ -186,12 +186,9 @@ class FramesStacking_SpeedInput_agent(object):
                          for i in range(len(inputs_data))]
             self.first_run=False
         else:
-            # adding the last command to the end and take only the last part
-            self.direction += [torch.cuda.FloatTensor(
-                self.process_command(inputs_data[-1]['GPS'][1],
-                                     inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()]
-            self.direction = self.direction[-g_conf.ENCODER_INPUT_FRAMES_NUM,:]
+            self.direction += [torch.cuda.FloatTensor(self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[0]).unsqueeze(0).cuda()]
 
+        self.direction = self.direction[-len(inputs_data):]
         actions_outputs, attention_layers,_ = self._model.forward_eval(norm_rgb, self.direction, norm_speed)
 
         all_action_outputs = [
