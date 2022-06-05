@@ -213,6 +213,7 @@ class StatisticsManager(object):
     def compute_global_statistics(self, total_routes):
         global_record = RouteRecord()
         global_record.scores['success_rate'] = 0
+        global_record.scores['success_rate_strict'] = 0
         global_record.values['average_velocity'] = 0.0
         global_record.route_id = -1
         global_record.index = -1
@@ -225,6 +226,7 @@ class StatisticsManager(object):
                 global_record.scores['score_penalty'] += route_record.scores['score_penalty']
                 global_record.scores['score_composed'] += route_record.scores['score_composed']
                 global_record.scores['success_rate'] += int(route_record.scores['score_route'] == 100.0)
+                global_record.scores['success_rate_strict'] += int(route_record.scores['score_composed'] == 100.0)
                 for key in route_record.values.keys():
                     if key == 'average_velocity':
                         global_record.values['average_velocity'] += route_record.values['average_velocity']
@@ -290,6 +292,7 @@ class StatisticsManager(object):
         stats_dict = route_record.__dict__
         data['_checkpoint']['global_record'] = stats_dict
         data['values'] = ['{:.3f}'.format(stats_dict['scores']['success_rate']),
+                          '{:.3f}'.format(stats_dict['scores']['success_rate_strict']),
                           '{:.3f}'.format(stats_dict['values']['average_velocity']),
                           '{:.3f}'.format(stats_dict['scores']['score_composed']),
                           '{:.3f}'.format(stats_dict['scores']['score_route']),
@@ -307,6 +310,7 @@ class StatisticsManager(object):
                           ]
 
         data['labels'] = ['Success rate',
+                          'Success rate (strict)'
                           'Avg. average driving velocity',
                           'Avg. driving score',
                           'Avg. route completion',
