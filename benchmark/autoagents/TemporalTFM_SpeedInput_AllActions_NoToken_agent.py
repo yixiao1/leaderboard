@@ -144,7 +144,7 @@ class TemporalTFM_SpeedInput_AllActions_NoToken_agent(object):
 
         return sensors
 
-    def __call__(self):
+    def __call__(self, timestamp):
         """
         Execute the agent call, e.g. agent()
         Returns the next vehicle controls
