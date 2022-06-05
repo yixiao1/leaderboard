@@ -19,7 +19,7 @@ class Waypointer:
 
         self.current_idx = -1
 
-    def tick(self, gnss_data, imu_data):
+    def tick_new(self, gnss_data, imu_data):
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)
 
@@ -61,7 +61,7 @@ class Waypointer:
 
         return self.checkpoint
 
-    def tick_old(self, gnss_data, imu_data):
+    def tick(self, gnss_data, imu_data):
 
         next_gps, _ = self._global_plan_gps[self.current_idx + 1]
         current_location = self.gps_to_location(gnss_data)
