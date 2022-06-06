@@ -459,7 +459,6 @@ def main():
     parser.add_argument('--docker', type=str, default='', help='Use docker to run CARLA off-screen, this is typically for running CARLA on server')
     parser.add_argument('--gpus', nargs='+', dest='gpus', type=str, default=0, help='The GPUs used for running the agent model. The firtst one will be used for running docker')
 
-    #parser.add_argument('--save-sensors', action="store_true", help='to save sensor images')
     parser.add_argument('--save-driving-vision', action="store_true", help=' to save the driving visualization')
     parser.add_argument('--save-driving-measurement', action="store_true", help=' to save the driving measurements')
     parser.add_argument('--draw-trajectory', action="store_true", help=' to draw the trajectory of driving')
