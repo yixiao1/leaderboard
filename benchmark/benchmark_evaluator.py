@@ -258,7 +258,8 @@ class BenchmarkEvaluator(object):
                                             str(config.repetition_index)) \
                 if args.save_driving_measurement else False
             self.agent_instance = getattr(self.module_agent, agent_class_name)\
-                (args.agent_config, save_driving_vision = vision_save_path, save_driving_measurement = measurement_save_path)
+                (args.agent_config, save_driving_vision = vision_save_path,
+                 save_driving_measurement = measurement_save_path, save_to_hdf5 = args.save_to_hdf5)
 
             config.agent = self.agent_instance
 
@@ -340,6 +341,8 @@ class BenchmarkEvaluator(object):
         # Run the scenario
         try:
             self.manager.run_scenario()
+            if args.save_to_hdf5:
+                self.agent_instance.hf.close()
 
         except AgentError as e:
             # The agent has failed -> stop the route
@@ -461,6 +464,7 @@ def main():
 
     parser.add_argument('--save-driving-vision', action="store_true", help=' to save the driving visualization')
     parser.add_argument('--save-driving-measurement', action="store_true", help=' to save the driving measurements')
+    parser.add_argument('--save-to-hdf5', action="store_true", help=' to save the driving data into hdf5 file')
     parser.add_argument('--draw-trajectory', action="store_true", help=' to draw the trajectory of driving')
     parser.add_argument('--fps', default=10, help='The frame rate of CARLA world')
 
@@ -480,7 +484,7 @@ def main():
     else:
         raise ValueError('You need to define the ids of GPU you want to use by adding: --gpus')
 
-    if arguments.save_driving_vision or arguments.save_driving_measurement:
+    if arguments.save_driving_vision or arguments.save_driving_measurement or arguments.save_to_hdf5:
         if not os.environ['SENSOR_SAVE_PATH']:
             raise RuntimeError('environemnt argument SENSOR_SAVE_PATH need to be setup for saving data')
 

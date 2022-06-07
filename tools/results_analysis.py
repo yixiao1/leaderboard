@@ -398,61 +398,61 @@ def inverse_pose(pose):
     return inv_pose
 
 def compute_comfort_values(data_path):
+    client = carla.Client('localhost', 2000)
+    client.set_timeout(60.0)
+    carla_world = client.load_world('Town02')
     routes = glob.glob(os.path.join(data_path, '*'))
     sort_nicely(routes)
     long_comfort_values=[]
     lat_comfort_values = []
-    route_id = 0
     for route_path in routes:
-        if route_id != 1 or route_id!=7:
-            json_path_list = glob.glob(os.path.join(route_path, '0','can_bus*.json'))
-            sort_nicely(json_path_list)
-            ego_speeds = []
-            ego_info = []
-            wp_list = []
-            for json_file in json_path_list:
-                with open(json_file) as json_:
-                    data = json.load(json_)
-                    ego_speeds.append(np.clip(round(data['speed'], 1), 0.0, None))
-                    ego_info.append((data['ego_location'], data['ego_rotation']))
-                    wp_list.append(data['navigate_wp_location'])
+        json_path_list = glob.glob(os.path.join(route_path, '0','can_bus*.json'))
+        sort_nicely(json_path_list)
+        ego_speeds = []
+        ego_info = []
+        wp_list = []
+        for json_file in json_path_list:
+            with open(json_file) as json_:
+                data = json.load(json_)
+                ego_speeds.append(np.clip(round(data['speed']['speed'], 1), 0.0, None))
+                ego_info.append((data['ego_location'], data['ego_rotation']))
+                wp_list.append(data['navigate_wp_location'])
 
-            long_comfort = []
-            for i, wp_loc in enumerate(wp_list):
+        route_long_comfort = []
+        route_relative_angle = []
+        for i, wp_loc in enumerate(wp_list):
+            if i ==0:
+                continue
 
-                is_junction = carla_world.get_map().get_waypoint(
-                    carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2])).is_junction
+            is_junction = carla_world.get_map().get_waypoint(
+                carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2])).is_junction
 
-                if not is_junction:
-                    if ego_speeds[i] > 0.00:
-                        long_comfort_value = abs(ego_speeds[i + 1] - ego_speeds[i]) / 0.1
-                        long_comfort.append(long_comfort_value)
+            if not is_junction:
+                if ego_speeds[i] > 0.00:
+                    long_comfort_value = abs(ego_speeds[i] - ego_speeds[i-1]) / 0.1
+                    route_long_comfort.append(long_comfort_value)
 
-                    long_comfort_values += long_comfort
+                if i+1 <= len(wp_list)-1:
+                    ego_loc, ego_rot = ego_info[i]
+                    next_wp = wp_list[i + 1]
+                    ra = compute_relative_angle(ego_loc, ego_rot, next_wp)
+                    route_relative_angle.append(ra)
 
-                    relative_angle = []
+        route_lat_comfort = []
+        for i in range(len(route_relative_angle) - 1):
+            lat_comfort_value = abs(route_relative_angle[i + 1] - route_relative_angle[i]) / 0.1
+            route_lat_comfort.append(lat_comfort_value)
 
-                    for i in range(len(ego_info) - 1):
-                        ego_loc, ego_rot = ego_info[i]
-                        next_wp = wp[i + 1]
-                        ra = compute_relative_angle(ego_loc, ego_rot, next_wp)
-                        relative_angle.append(ra)
+        lat_comfort_values += route_lat_comfort
 
-                    lat_comfort = []
-                    for i in range(len(relative_angle) - 1):
-                        lat_comfort_value = abs(relative_angle[i + 1] - relative_angle[i]) / 0.1
-                        lat_comfort.append(lat_comfort_value)
-
-                    lat_comfort_values += lat_comfort
-
-            route_id += 1
+        long_comfort_values += route_long_comfort
 
     print(' longtitude:', np.mean(long_comfort_values), np.std(long_comfort_values))
     print(' ')
     print(' lateral:', np.mean(lat_comfort_values), np.std(lat_comfort_values))
     print(' ')
 
-def compute_dist_to_sidewalk(data_path):
+def compute_wp_following_error(data_path):
     client = carla.Client('localhost', 2000)
     client.set_timeout(60.0)
     carla_world = client.load_world('Town02')
@@ -460,16 +460,16 @@ def compute_dist_to_sidewalk(data_path):
 
     routes = glob.glob(os.path.join(data_path, '*'))
     sort_nicely(routes)
-    lateral_dist_junction = []
+    #lateral_dist_junction = []
     lateral_dist = []
     rot_error = []
-    rot_error_junction = []
+    #rot_error_junction = []
     route_id = 0
-    trajectories_fig = plt.figure(0)
-    draw_map(carla_world)
+    #trajectories_fig = plt.figure(0)
+    #draw_map(carla_world)
     for route_path in routes:
-        """
         print(route_path.split('/')[-1])
+        """
         json_path_list = glob.glob(os.path.join(route_path, '0', 'can_bus*.json'))
         sort_nicely(json_path_list)
         first=True
@@ -478,13 +478,14 @@ def compute_dist_to_sidewalk(data_path):
             with open(json_file) as json_:
                 data = json.load(json_)
                 wp_loc = data['navigate_wp_location']
-                is_junction = carla_world.get_map().get_waypoint(
-                    carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2])).is_junction
+                #is_junction = carla_world.get_map().get_waypoint(
+                #    carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2])).is_junction
 
-                shoulder = carla_world.get_map().get_waypoint(carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2]),lane_type=carla.LaneType.Shoulder)
                 datapoint = [wp_loc[0], wp_loc[1], wp_loc[2]]
                 _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_GREEN_0, size=20)
 
+                shoulder = carla_world.get_map().get_waypoint(carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2]),
+                                                              lane_type=carla.LaneType.Shoulder)
                 shoulder_loc = shoulder.transform.location
                 datapoint = [shoulder_loc.x, shoulder_loc.y, shoulder_loc.z]
                 _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_BUTTER_0, size=10)
@@ -500,13 +501,9 @@ def compute_dist_to_sidewalk(data_path):
                     _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_SCARLET_RED_0, size=30)
                     first=False
         """
-
-        if route_id >= 16 and route_id <= 31:
-            continue
         json_path_list = glob.glob(os.path.join(route_path, '0','can_bus*.json'))
         sort_nicely(json_path_list)
         id=0
-        start_compute = False
         for json_file in json_path_list:
             with open(json_file) as json_:
                 data = json.load(json_)
@@ -517,24 +514,33 @@ def compute_dist_to_sidewalk(data_path):
 
                 is_junction = carla_world.get_map().get_waypoint(carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2])).is_junction
 
-                if is_junction:
-                    start_compute=True
+                if not is_junction:
+                    #shoulder = carla_world.get_map().get_waypoint(carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2]),
+                    #                                              lane_type=carla.LaneType.Shoulder)
+                    #shoulder_loc = shoulder.transform.location
 
-                if start_compute:
-                    shoulder = carla_world.get_map().get_waypoint(carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2]),
-                                                                  lane_type=carla.LaneType.Shoulder)
-                    shoulder_loc = shoulder.transform.location
+                    #shoulder_to_world = np.asarray([[shoulder_loc.x], [shoulder_loc.y], [1.0]])
+                    #ego_yaw_radiant = np.deg2rad(ego_rot[1])
+                    #ose_ego_to_world = np.asarray([[np.cos(ego_yaw_radiant), -np.sin(ego_yaw_radiant), ego_loc[0]],
+                    #                                [np.sin(ego_yaw_radiant), np.cos(ego_yaw_radiant), ego_loc[1]],
+                    #                                [0.0, 0.0, 1.0]])
+                    #pose_world_to_ego = inverse_pose(pose_ego_to_world)
+                    #shoulder_to_ego = np.dot(pose_world_to_ego, shoulder_to_world)
 
-                    shoulder_to_world = np.asarray([[shoulder_loc.x], [shoulder_loc.y], [1.0]])
-                    ego_yaw_radiant = np.deg2rad(ego_rot[1])
-                    pose_ego_to_world = np.asarray([[np.cos(ego_yaw_radiant), -np.sin(ego_yaw_radiant), ego_loc[0]],
-                                                    [np.sin(ego_yaw_radiant), np.cos(ego_yaw_radiant), ego_loc[1]],
-                                                    [0.0, 0.0, 1.0]])
-                    pose_world_to_ego = inverse_pose(pose_ego_to_world)
-                    shoulder_to_ego = np.dot(pose_world_to_ego, shoulder_to_world)
+                    #wp_to_world = np.asarray([[wp_loc[0]], [wp_loc[1]], [1.0]])
+                    #wp_to_ego = np.dot(pose_world_to_ego, wp_to_world)
 
-                    wp_to_world = np.asarray([[wp_loc[0]], [wp_loc[1]], [1.0]])
-                    wp_to_ego = np.dot(pose_world_to_ego, wp_to_world)
+                    wp_location = carla.Location(x=wp_loc[0], y=wp_loc[1], z=wp_loc[2])
+                    wp_yaw_radiant = np.deg2rad(wp_rot[1])
+                    pose_wp_to_world = np.asarray([[np.cos(wp_yaw_radiant), -np.sin(wp_yaw_radiant), wp_location.x],
+                                                   [np.sin(wp_yaw_radiant), np.cos(wp_yaw_radiant), wp_location.y],
+                                                   [0.0, 0.0, 1.0]])
+                    pose_world_to_wp = inverse_pose(pose_wp_to_world)
+                    ego_to_world = np.asarray([[ego_loc[0]], [ego_loc[1]], [1.0]])
+                    ego_to_wp = np.dot(pose_world_to_wp, ego_to_world)
+                    #abs(ego_to_wp[0][0]) # longititude distance
+                    #abs(ego_to_wp[1][0]) # lateral distance
+                    lateral_dist.append(abs(ego_to_wp[1][0]))
 
                     v_begin = carla.Location(x=ego_loc[0], y=ego_loc[1], z=ego_loc[2])
                     v_end = v_begin + carla.Location(x=math.cos(math.radians(ego_rot[1])),
@@ -549,89 +555,59 @@ def compute_dist_to_sidewalk(data_path):
                     relative_angle = math.acos(
                         np.clip(np.dot(w_vec, v_vec) / (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
 
-                    if is_junction:
-                        # turning left cases, refer to the distance to shoulder
-                        lateral_dist_junction.append(abs(shoulder_to_ego[1][0] - 2.15))
-                        if abs(shoulder_to_ego[1][0] - 2.15)>1.0:
-                            datapoint = [ego_loc[0], ego_loc[1], ego_loc[2]]
-                            _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_SCARLET_RED_0, size=15)
-                        else:
-                            datapoint = [ego_loc[0], ego_loc[1], ego_loc[2]]
-                            _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_BLACK, size=12)
-
-                        rot_error_junction.append(abs(relative_angle))
-
-                    else:
-                        pass
-                        # turning right cases, no any boundary restrictions
-                        #rot_error_junction.append(abs(relative_angle))
-                        #print(wp_to_ego[1][0])
-                        #if abs(wp_to_ego[1][0])>0.1:
-                        #    datapoint = [ego_loc[0], ego_loc[1], ego_loc[2]]
-                        #    _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_BUTTER_0, size=15)
-                        #else:
-                        #    datapoint = [ego_loc[0], ego_loc[1], ego_loc[2]]
-                        #    _ = draw_point_data(datapoint, trajectories_fig, color=COLOR_BLACK, size=10)
+                    rot_error.append(abs(relative_angle))
 
 
                 id+=1
         route_id += 1
 
-    plt.xlim(-250, 2500)
-    plt.ylim(1000, 4000)
+    #plt.xlim(-250, 2500)
+    #plt.ylim(1000, 4000)
 
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.title(data_path.split('/')[-1])
-    trajectories_fig.savefig(os.path.join(data_path+ '_' + 'trajectory.png'))
-    plt.close()
+    #plt.xlabel('x')
+    #plt.ylabel('y')
+    #plt.title(data_path.split('/')[-1])
+    #trajectories_fig.savefig(os.path.join(data_path+ '_' + 'trajectory.png'))
+    #plt.close()
 
 
     print(' ')
     print(' lateral dist error:')
-    print('               straight route:', np.mean(lateral_dist), '            turning:', np.mean(lateral_dist_junction))
+    print('               straight route:', np.mean(lateral_dist))
     print(' ')
     print(' rot_error:')
-    print('               straight route:', np.mean(rot_error), '            turning:', np.mean(rot_error_junction))
+    print('               straight route:', np.mean(rot_error))
     print(' ')
 
 
 
 make_plots = False
 make_trajectries = False
-analysis_comfort_values = True
-analysis_wp_following = False
+analysis_comfort_values = False
+analysis_wp_following = True
 
 
 if analysis_wp_following:
-    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario2_newSingleweathertown_Town02_test')
-    model_names = ['20220521_SingleFrame_19Hours_seed1_1_nospeedloss_300000_10FPS',
-                   '20220521_FramesStacking_5Frames_19Hours_seed1_1_nospeedloss_100000_10FPS',
+    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'LeftTurn_check')
+    model_names = ['20220521_SingleFrame_19Hours_seed1_1_nospeedloss_700000_10FPS',
+                   '20220521_FramesStacking_5Frames_19Hours_seed1_1_nospeedloss_50000_10FPS',
                    '20220521_TempoarlTFM_En_5Frames_AllActions_mask_19Hours_seed1_1_nospeedloss_25000_10FPS']
 
     for model_name in model_names:
         data_path = os.path.join(root_dir, model_name)
         print('-----------------------------------------------------')
         print('Model:', model_name)
-        compute_dist_to_sidewalk(data_path)
+        compute_wp_following_error(data_path)
 
 if analysis_comfort_values:
-    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'Scenario5_newweathertown_Town02')
-    model_names = ['20220521_SingleFrame_19Hours_seed1_1_nospeedloss_300000_10FPS',
+    root_dir = os.path.join(os.environ['SENSOR_SAVE_PATH'],'RightTurn_check')
+    model_names = ['20220521_SingleFrame_19Hours_seed1_1_nospeedloss_700000_10FPS',
+                   '20220521_FramesStacking_5Frames_19Hours_seed1_1_nospeedloss_50000_10FPS',
                    '20220521_TempoarlTFM_En_5Frames_AllActions_mask_19Hours_seed1_1_nospeedloss_25000_10FPS']
-    #car_type= ['microlino']
-    #leading_speed= ['3mps']
-
-    #car_type = ['noleadingcar']
-    #leading_speed = ['none']
-
-    #for car in car_type:
-        #for sp in leading_speed:
     for model_name in model_names:
         data_path = os.path.join(root_dir, model_name)
         print('-----------------------------------------------------')
         print('Model:', model_name)
-        #print(car, sp)
         compute_comfort_values(data_path)
 
 

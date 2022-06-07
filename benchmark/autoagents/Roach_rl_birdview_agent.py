@@ -13,12 +13,9 @@ from enum import Enum
 
 import carla
 import os
-import torch
 import math
-from srunner.scenariomanager.timer import GameTime
 from queue import Queue
 import json
-import torchvision.transforms.functional as TF
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
@@ -28,15 +25,12 @@ from importlib import import_module
 from benchmark.utils.route_manipulation import downsample_route
 from benchmark.envs.sensor_interface import SensorInterface
 
-from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize
+from dataloaders.transforms import encode_directions_4, encode_directions_6,inverse_normalize, decode_directions_4
 from benchmark.utils.waypointer import Waypointer
-from benchmark.envs.data_writer import Writer
 from omegaconf import OmegaConf
 from network.models.architectures.Roach_rl_birdview.birdview.chauffeurnet import ObsManager
 import network.models.architectures.Roach_rl_birdview.utils.transforms as trans_utils
 from network.models.architectures.Roach_rl_birdview.utils.traffic_light import TrafficLightHandler
-
-from agents.navigation.controller import PIDLongitudinalController
 
 def checkpoint_parse_configuration_file(filename):
 
@@ -69,7 +63,7 @@ class Roach_rl_birdview_agent(object):
     Autonomous agent base class. All user agents have to be derived from this class
     """
 
-    def __init__(self, path_to_conf_file, save_sensor=None, save_attention=None):
+    def __init__(self, path_to_conf_file, save_driving_vision, save_driving_measurement, save_to_hdf5):
         self.track = Track.SENSORS
         #  current global plans to reach a destination
         self._global_plan = None
@@ -79,32 +73,26 @@ class Roach_rl_birdview_agent(object):
         self.sensor_interface = SensorInterface()
         self.inputs_buffer=Queue()
         self.waypointer = None
-        self.attention_save_path = None
+        
+        self.vision_save_path = save_driving_vision
+        self.measurement_save_path = save_driving_measurement
+        self.save_to_hdf5 = save_to_hdf5
+        if self.save_to_hdf5:
+            hdf5_dir = '/'.join(self.vision_save_path.split('/')[:-2])
+            hdf5_name = '_'.join(self.vision_save_path.split('/')[-2:])
+            self.hdf5_save_path = os.path.join(hdf5_dir, hdf5_name)
 
         # agent's initialization
-        self.setup(path_to_conf_file)
-        self.wallclock_t0 = None
+        self.setup_model(path_to_conf_file)
 
-        if save_sensor is not None:
-            self.writer = Writer(save_sensor)
-        else:
-            self.writer = None
-
-        if save_attention:
-            self.cmap_2 = plt.get_cmap('jet')
-            self.attention_save_path = save_attention
-            self.att_count = 0
+        self.hf = None
+        self.cmap_2 = plt.get_cmap('jet')
+        self.datapoint_count = 0
 
         self.register_actor=[]
 
-        #self.args_longitudinal = {
-        #    'K_P': 1.0,
-        #    'K_D': 0.0,
-        #    'K_I': 1.0,
-        #    'dt': 0.1}
 
-
-    def setup(self, path_to_conf_file):
+    def setup_model(self, path_to_conf_file):
         exp_dir = os.path.join('/', os.path.join(*path_to_conf_file.split('/')[:-1]))
         yaml_conf, checkpoint_number, _ = checkpoint_parse_configuration_file(path_to_conf_file)
         cfg = OmegaConf.load(os.path.join(exp_dir, yaml_conf))
@@ -134,10 +122,20 @@ class Roach_rl_birdview_agent(object):
 
         TrafficLightHandler.reset(self.world)
 
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
+        """
+        Set the plan (route) for the agent
+        """
+        ds_ids = downsample_route(global_plan_world_coord, 10000000)
+        self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in
+                                         ds_ids]
+        self._global_plan = [global_plan_gps[x] for x in ds_ids]
+        self._route_plan = global_plan_world_coord
+        self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
+
     def set_ego_vehicle(self, ego_vehicle):
         self._ego_vehicle=ego_vehicle
         self._obs_managers.attach_ego_vehicle(self._ego_vehicle, self._route_plan)
-        #self._lon_controller = PIDLongitudinalController(self._ego_vehicle, **self.args_longitudinal)
 
     def sensors(self):  # pylint: disable=no-self-use
         """
@@ -164,6 +162,33 @@ class Roach_rl_birdview_agent(object):
         ]
 
         return sensors
+    
+
+    def __call__(self, timestamp):
+        """
+        Execute the agent call, e.g. agent()
+        Returns the next vehicle controls
+        """
+        input_data = self.sensor_interface.get_data()
+
+        print('    Timestamp frame = ',timestamp.frame)
+
+        for key, values in input_data.items():
+            if values[0] != timestamp.frame:
+                raise RuntimeError(' The frame number of sensor data does not match the timestamp frame:', key)
+
+        input_data = self.adding_roach_data(input_data)
+        
+        inputs = [input_data]
+
+        control = self.run_step(inputs)
+        control.manual_gear_shift = False
+
+        # We pop the first frame of the input buffer and stack the current frame to the end
+        self.inputs_buffer.get()
+        self.inputs_buffer.put(input_data)
+
+        return control
 
     def calculate_velocity(self,actor):
         """
@@ -178,16 +203,17 @@ class Roach_rl_birdview_agent(object):
         Execute one step of navigation.
         :return: control
         """
-
         input_data = copy.deepcopy(inputs_data)
 
         policy_input = self._wrapper_class.process_obs(input_data[-1], self._wrapper_kwargs['input_states'], train=False)
+
+        cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
 
         actions, _, _, _, _, _ = self._policy.forward(
             policy_input, deterministic=True, clip_action=True)
         control = self._wrapper_class.process_act(actions, self._wrapper_kwargs['acc_as_action'], train=False)
 
-        #"""
+        """
         ## This part is for collecting curated scenario data
         ego_location = self._ego_vehicle.get_transform().location
         ego_wp = self.map.get_waypoint(ego_location)
@@ -247,22 +273,26 @@ class Roach_rl_birdview_agent(object):
                     if -ego_wp.lane_width * (0.8+ np.random.uniform(-0.1, 0.1)) < loc_in_ev.y < ego_wp.lane_width * (0.8+ np.random.uniform(-0.1, 0.05)):
                             control = self.takeout_control(1.0)
 
-        #"""
+        """
 
         steer = control.steer
         throttle = control.throttle
         brake = control.brake
 
-        if self.attention_save_path:
-            if not os.path.exists(self.attention_save_path):
-                os.makedirs(self.attention_save_path)
+        if self.save_to_hdf5:
+            if not os.path.exists('/'.join(self.hdf5_save_path.split('/')[:-1])):
+                os.makedirs('/'.join(self.hdf5_save_path.split('/')[:-1]))
+            if not self.hf:
+                self.hf = h5py.File(self.hdf5_save_path, 'w')
+            group_frame = self.hf.create_group(f"frame_{self.datapoint_count}")
+
+        if self.vision_save_path:
             last_input = input_data[-1]['rgb_central'][1]
             last_input = Image.fromarray(last_input)
 
             #"""
             last_input_ontop = Image.fromarray(inputs_data[-1]['rgb_ontop'][1])
 
-            cmd = self.process_command(inputs_data[-1]['GPS'][1], inputs_data[-1]['IMU'][1])[1]
             if float(cmd) == 1.0:
                 command_sign = Image.open(os.path.join(os.getcwd(), 'signs', '4_directions', 'turn_left.png'))
 
@@ -303,58 +333,70 @@ class Roach_rl_birdview_agent(object):
                               str("Speed " + "%.3f" % inputs_data[-1]['SPEED'][1]['speed']), fill=(255, 255, 255), font=font)
             #mat = mat.resize((650, 225))
 
-            if not os.path.exists(os.path.join(self.attention_save_path,'check')):
-                os.makedirs(os.path.join(self.attention_save_path,'check'))
-            mat.save(os.path.join(self.attention_save_path, 'check', str(self.att_count).zfill(6) + '.png'))
-            
-            #"""
+            if self.save_to_hdf5:
+                img_arr = np.array(mat)
+                if img_arr.size > 2000:
+                    group_frame.create_dataset('footage', data=img_arr, compression="gzip", compression_opts=4)
+                else:
+                    group_frame.create_dataset('footage', data=img_arr)
 
-            speed_data = inputs_data[-1]['SPEED'][1]
+            else:
+                if not os.path.exists(self.vision_save_path):
+                    os.makedirs(self.vision_save_path)
 
-            image = last_input.resize((600, 170))
-            image.save(os.path.join(self.attention_save_path, 'rgb_central' + '%06d.png' % self.att_count))
+                if not os.path.exists(os.path.join(self.vision_save_path,'check')):
+                    os.makedirs(os.path.join(self.vision_save_path,'check'))
+                mat.save(os.path.join(self.vision_save_path, 'check', str(self.datapoint_count).zfill(6) + '.jpg'))
+                image = last_input.resize((600, 170))
+                image.save(os.path.join(self.vision_save_path, 'rgb_central' + '%06d.png' % self.datapoint_count))
 
-            ## TODO: HARDCODING
-            #for key, value in speed_data.items():
-            #    if key in data.keys():  # If it exist, add it
-            #        data[key].update(value)
-            #    else:
-            #        data.update({key: value})
-
-
-            can_bus_dict = {
-                'steer': np.nan_to_num(steer),
-                'throttle': np.nan_to_num(throttle),
-                'brake': np.nan_to_num(brake),
-                'hand_brake': control.hand_brake,
-                'reverse': control.reverse,
-                'speed': speed_data['speed'],
-                'direction': float(cmd)
-            }
+        if self.measurement_save_path:
+            # we record the driving measurement data
+            data = inputs_data[-1]['can_bus'][1]
+            data.update({'steer': np.nan_to_num(control.steer)})
+            data.update({'throttle': np.nan_to_num(control.throttle)})
+            data.update({'brake': np.nan_to_num(control.brake)})
+            data.update({'hand_brake': control.hand_brake})
+            data.update({'reverse': control.reverse})
+            data.update({'speed': inputs_data[-1]['SPEED'][1]['speed']})
+            data.update({'direction': float(cmd)})
 
             if throttle == 0.0:
                 if brake <= 1.0:
-                    can_bus_dict['acceleration'] = -1 * brake
+                    data['acceleration'] = -1 * brake
                 else:
                     raise RuntimeError
             elif brake == 0.0:
                 if throttle <= 1.0:
-                    can_bus_dict['acceleration'] = throttle
+                    data['acceleration'] = throttle
                 else:
                     raise RuntimeError
             else:
                 raise RuntimeError
 
-            with open(os.path.join(self.attention_save_path, 'cmd_fix_can_bus' + str(self.att_count).zfill(6) + '.json'), 'w') as fo:
-                jsonObj = {}
-                jsonObj.update(can_bus_dict)
-                fo.seek(0)
-                fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
-                fo.close()
+            if self.save_to_hdf5:
+                for key, value in data.items():
+                    if not isinstance(value, np.ndarray):
+                        if not isinstance(value, list):
+                            value = np.array([value])
+                        else:
+                            value = np.array(value)
+                    group_frame.create_dataset(key, data=value)
 
-            #"""
+            else:
+                if not os.path.exists(self.measurement_save_path):
+                    os.makedirs(self.measurement_save_path)
+                with open(
+                        os.path.join(self.measurement_save_path,
+                                     'can_bus' + str(self.datapoint_count).zfill(6) + '.json'),
+                        'w') as fo:
+                    jsonObj = {}
+                    jsonObj.update(data)
+                    fo.seek(0)
+                    fo.write(json.dumps(jsonObj, sort_keys=True, indent=4))
+                    fo.close()
 
-            self.att_count+=1
+        self.datapoint_count+=1
 
         return control
 
@@ -437,56 +479,8 @@ class Roach_rl_birdview_agent(object):
         self.sensor_interface = None
         self.inputs_buffer = None
         self.waypointer = None
-        self.attention_save_path = None
-
-        self.wallclock_t0 = None
-        self.writer = None
-        self.att_count = 0
-
-    def __call__(self):
-        """
-        Execute the agent call, e.g. agent()
-        Returns the next vehicle controls
-        """
-        input_data = self.sensor_interface.get_data()
-        input_data = self.adding_roach_data(input_data)
-
-        timestamp = GameTime.get_time()
-
-        if not self.wallclock_t0:
-            self.wallclock_t0 = GameTime.get_wallclocktime()
-        wallclock = GameTime.get_wallclocktime()
-        wallclock_diff = (wallclock - self.wallclock_t0).total_seconds()
-
-        #if int(wallclock_diff / 60) % 10 == 0:
-        #print('======[Agent] Wallclock_time = {} / {} / Sim_time = {} / {}x'.format(wallclock, wallclock_diff, timestamp, timestamp/(wallclock_diff+0.001)))
-
-        if len(self.inputs_buffer.queue) <= 0:
-            print('=== The agent is stopping and waitting for the input buffer ...')
-            self.inputs_buffer.put(input_data)
-            return self.stopping_and_wait()
-
-        else:
-            inputs = [list(self.inputs_buffer.queue)[i] for i in range(0, len(self.inputs_buffer.queue))]
-
-            control = self.run_step(inputs)
-            control.manual_gear_shift = False
-
-            # We pop the first frame of the input buffer and stack the current frame to the end
-            self.inputs_buffer.get()
-            self.inputs_buffer.put(input_data)
-
-            return control
-
-    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
-        """
-        Set the plan (route) for the agent
-        """
-        ds_ids = downsample_route(global_plan_world_coord, 50)
-        self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
-        self._global_plan = [global_plan_gps[x] for x in ds_ids]
-        self._route_plan = global_plan_world_coord
-        self.waypointer = Waypointer(self._global_plan, self._global_plan[0][0], self.world)
+        self.vision_save_path = None
+        self.datapoint_count = 0
 
 
     def process_command(self, gps, imu):
